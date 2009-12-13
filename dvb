@@ -1,0 +1,64 @@
+#!/usr/bin/perl -w
+
+use strict;
+use 5.10.0;
+use WWW::Mechanize;
+use HTML::TreeBuilder;
+use Getopt::Std;
+#use Encode qw/encode_utf8/;
+
+# $|++;  # Randal's idiom.
+
+my $url = 'http://dvb.de';
+my %args;
+
+getopts("f:t:", \%args);
+my $from = $args{'f'};
+my $to   = $args{'t'};
+
+unless ($from and $to) {
+    say "You didn't specify destinations correctly!";
+    exit -1;
+}
+
+# See HTML::Element for operations on the tree such as dump(),
+# HTML::TreeBuilder for parsing information and WWW::Mechanize for
+# general documentation.
+my $mech = new WWW::Mechanize;
+my $tree = new HTML::TreeBuilder;
+
+use utf8;
+$mech->get($url);  # TODO Throws damn errors around where there are none!
+my $page = $mech->submit_form(
+    'with_fields' => {
+        'vaform[datum]'     =>  '13.12.2009',
+        'vaform[startname]' =>  $from,
+        'vaform[startort]'  =>  'Dresden',
+        'vaform[zeit]'      =>  '21:05',
+        'vaform[zeittyp]'   =>  'dep',
+        'vaform[zielname]'  =>  $to,
+        'vaform[zielort]'   =>  'Dresden',
+    }
+);
+
+if ($mech->success) {
+    $tree->parse_content($page->content);
+    my @rides = $tree->look_down( '_tag' , 'table', 'class', 'full trip' );
+
+    foreach my $ride (@rides) {
+        print "\n";
+        my @stops = $ride->look_down( '_tag', 'tr' );
+        foreach my $stop (@stops) {
+            if (my $bastard = $stop->look_down( '_tag', 'ul' )) {
+                $bastard ->delete();
+            }
+            foreach my $desc ($stop->look_down( '_tag', 'td' )) {
+                print $desc->as_text . " ";
+            }
+            print "\n";
+            #$stop->dump;
+        }
+    }
+    print "\n";
+}
+
