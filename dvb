@@ -1,17 +1,23 @@
 #!/usr/bin/perl -w
+# 2010-01-23, Created by H Fuchs <hagen.fuchs@physik.tu-dresden.de>
+# 2010-02-03, The search for the source of 'Parsing of undecoded UTF-8 will
+# give garbage' ends today.  WWW::Mechanize 1.50 handles it right and passing
+# decoded_content to the TreeBuilder works now.
 
+# TODO Take a look at WWW::Mechanize::TreeBuilder
+
+# --- Preliminiaries
 use strict;
-use 5.10.0;
-use WWW::Mechanize;
-use HTML::TreeBuilder;
+use feature qw/say/;
 use Getopt::Std;
-#use Encode qw/encode_utf8/;
-
-# $|++;  # Randal's idiom.
+use WWW::Mechanize 1.5;
+use HTML::TreeBuilder;
+use Encode;
 
 my $url = 'http://dvb.de';
-my %args;
 
+# --- Option Parsing
+my %args;
 getopts("f:t:", \%args);
 my $from = $args{'f'};
 my $to   = $args{'t'};
@@ -25,16 +31,18 @@ unless ($from and $to) {
 # HTML::TreeBuilder for parsing information and WWW::Mechanize for
 # general documentation.
 my $mech = new WWW::Mechanize;
-my $tree = new HTML::TreeBuilder;
 
-use utf8;
-$mech->get($url);  # TODO Throws damn errors around where there are none!
+# TODO Zum Kotzen.
+my ($sec,$min,$hour,$day,$month,$year,,,) = localtime(time);
+$year = $year+1900;
+
+$mech->get($url);
 my $page = $mech->submit_form(
     'with_fields' => {
-        'vaform[datum]'     =>  '13.12.2009',
+        'vaform[datum]'     =>  "$day." . ++$month . ".$year",
         'vaform[startname]' =>  $from,
         'vaform[startort]'  =>  'Dresden',
-        'vaform[zeit]'      =>  '21:05',
+        'vaform[zeit]'      =>  "$hour:$min",
         'vaform[zeittyp]'   =>  'dep',
         'vaform[zielname]'  =>  $to,
         'vaform[zielort]'   =>  'Dresden',
@@ -42,23 +50,48 @@ my $page = $mech->submit_form(
 );
 
 if ($mech->success) {
-    $tree->parse_content($page->content);
-    my @rides = $tree->look_down( '_tag' , 'table', 'class', 'full trip' );
+    # TODO Why does the TreeBuilder still need UTF-8 decoding?
+    my $tree = HTML::TreeBuilder->new_from_content(decode_utf8 $page->content);
 
+    # Find all "full trip" tables and parse each one.
+    say "-"x70;
+    my @rides = $tree->look_down( '_tag' , 'table', 'class', 'full trip' );
     foreach my $ride (@rides) {
-        print "\n";
         my @stops = $ride->look_down( '_tag', 'tr' );
         foreach my $stop (@stops) {
-            if (my $bastard = $stop->look_down( '_tag', 'ul' )) {
-                $bastard ->delete();
-            }
-            foreach my $desc ($stop->look_down( '_tag', 'td' )) {
-                print $desc->as_text . " ";
+            # Remove elements that add no information.
+            my @bastards = $stop->look_down('_tag', 'ul', 'class', 'linkliste');
+            push @bastards, $stop->look_down('_tag', 'img');
+            $_->delete foreach (@bastards);
+
+            # Find the individual description elements.  Entries:
+            #  - time
+            #  - "ab"/"an"
+            #  - station
+            #  - additional information
+            my @desc = $stop->look_down( '_tag', 'td' );
+            my $tmp = $desc[0]->as_text.' '.$desc[1]->as_text.' '.$desc[2]->as_text;
+            print encode_utf8 $tmp;
+
+            # Parsing the badly-formatted info-string
+            # TODO Linienänderungen!  ul class=changelist
+            foreach my $info ($desc[4]->look_down('_tag','td')) {
+                if (my $bold =  $info->look_down('_tag','b')) {
+                    my $line = $bold->as_text;
+                    $line =~ s/^[^0-9]*([0-9]*)[^0-9]*$/$1/;
+                    print " ($line)";
+                    $bold->delete;
+                }
+                if (my $note = $info->as_text) {
+                    print "\n\t" . encode_utf8 $note;
+                }
             }
             print "\n";
-            #$stop->dump;
         }
+        say "-"x70;
     }
-    print "\n";
+    $tree->delete;
+} else {
+    say STDERR "Error: ", $mech->response->status_line;
 }
 
