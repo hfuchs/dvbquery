@@ -1,4 +1,5 @@
 #!/usr/bin/perl -w
+# 2010-02-03, Created by H Fuchs <hagen.fuchs@physik.tu-dresden.de>
 # Witz: Wenn die Anfrage nicht länger als 10 Tage her ist, nimm die Daten
 # einfach aus dem Cache.  Noch cooler: Liefere immer aus dem Cache, aber
 # starte einen thread, der nochmal kontrolliert.
@@ -6,19 +7,19 @@
 use LWP::Simple;  # Or WWW::Mechanize?
 use URI::Escape;
 use Text::Iconv;
+use Encode;
 use Data::Dumper;
 use Getopt::Std;
 use CGI;
 use utf8;
 use feature qw/say/;
+use URI;
 
 
 # --- Globals
 # TODO Read from config file
 my $server_url = "http://widgets.vvo-online.de/abfahrtsmonitor/";
 my $ort        = "Dresden";
-#my $from       = "Hauptbahnhof";
-#my $to         = "Albertplatz";
 my %config     = (  # TODO Put all config here.
     'want_to_chat' => 1,
     'debug'        => 0,
@@ -147,16 +148,14 @@ sub parse_departure_data {
 }
 
 sub fetch_departure_data {
-    my $station = $to_latin->convert(shift);
+    my $station = shift;
 
-    D("-> fetch_departure_data");
-    my $url = "Abfahrten.do?ort=" . CGI::escape($ort) .
-              "&hst=" . CGI::escape($station) .
-              "&vz=" .  CGI::escape("10:40");
-              # TODO Not sure about these.
-              # +"&vm="+preferenceForKey('vmPrefChecked')
-              # +"&lim="+preferenceForKey('listitemsPrefChecked'));
-    return $to_utf8->convert(CGI::unescapeHTML(get($server_url . $url)))
+    my $url = URI->new($server_url .
+        "Abfahrten.do?ort=$ort&hst=$station&vz=20:00");
+        # TODO Not sure about these.
+        # +"&vm="+preferenceForKey('vmPrefChecked')
+        # +"&lim="+preferenceForKey('listitemsPrefChecked'));
+    return encode_utf8(CGI::unescapeHTML(get($url)))
         or die "TODO - I died!";
 }
 
@@ -179,20 +178,19 @@ sub parse_station_data {
 }
 
 sub fetch_station_data {
-    my $station = $to_latin->convert(shift);
+    my $station = shift;
+    # URL(decode_utf8)=plauen%20n%C3%B6thnitzer%20stra%C3%9Fe
+    # URL(nothing)    =plauen%20n%C3%B6thnitzer%20stra%C3%9Fe
+    # URL(to_latin)   =plauen%20n%F6thnitzer%20stra%DFe
 
-    D("-> fetch_station_data");
-    my $url = "Haltestelle.do?ort=" . CGI::escape($ort) .  "&hst=" .
-              CGI::escape($station);
-    D("URL: $url");
-    my $list = $to_utf8->convert(CGI::unescapeHTML(get($server_url
-                . $url)));
-    D("List from server: $list");
-    return $list;
+    my $url  = URI->new($server_url . "Haltestelle.do?ort=$ort&hst=$station");
+    return encode_utf8(CGI::unescapeHTML(get($url)))
+        or die "TODO - I died!";
 }
 
 sub check_station_uniqueness {
     # TODO Caching!  Learning!
+    # TODO Inconsistent user interface, chat()s all over the place.
     my @stations = @_;
 
     foreach $station (@stations) {
