@@ -17,7 +17,7 @@ use Encode;
 #use Data::Dumper;
 use Getopt::Std;
 use CGI qw/unescape_HTML/;
-use utf8;
+#use utf8;  # TODO WTF?  When using this, output becomes garbled!
 use feature qw/say/;
 use URI;  # TODO URI::Escape *and* URI?  Don't think so.
 
@@ -40,8 +40,10 @@ my %config     = (  # TODO Put all config here.
 
 # Command-line parsing
 my %args;
-getopts("f:t:a:", \%args);
+getopts("f:t:a:h", \%args);
 my $time = $args{'a'};  # "at"
+
+display_help if ($args{'h'});
 
 # TODO No args?  Ask.
 # TODO Support user-definable abbreviations (eg 'NÖ', 'HB' etc).
@@ -59,26 +61,27 @@ if ($from = sanitize_input($args{'f'})) {
 
 # --- Subroutines
 sub display_connections {
+    # TODO Format of "Fußgänger"-entries is not quite cute.
     D("TODO: display_connections");
     my ($from, $to) = @_;
 
     chat("Travelling from '" . $from . "' to '" . $to . "', I see.");
     if (check_station_uniqueness(($from, $to))) {
-
         # Now on to the real connection data.
-        #$result = parse_connection_data(fetch_connection_data($from, $to));
-        # TODO Fix this shit.
         fetch_connection_data($from, $to);
-        #say "This shit ain't going to work anytime soon...";
+        # TODO perhaps rather:
+        # $result = parse_connection_data(fetch_connection_data($from, $to));
     };
 
     return;
 }
 
 sub parse_connection_data {
+    # TODO Animate me!
 }
 
 sub fetch_connection_data {
+    # TODO Much too big.
     D("-> fetch_connection_data");
 
     # TODO $time still global
@@ -292,7 +295,15 @@ sub sanitize_input {
 }
 
 sub display_help {
-    D("TODO: display_help");
+    # TODO Use POD.
+    say "DVB query script";
+    say "Usage:";
+    say "  Display station info   -    $0 -f [station]";
+    say "  Route planning         -    $0 -f [from] -t [to] [-a [at]]";
+    say "\nExample:";
+    say "  $0 -f albertplatz -t 'plauen nöthnitzer straße' -a '19:00'";
+    #say "----";
+    #say "2010, Hagen Fuchs <hagen.fuchs@physik.tu-dresden.de>";
     exit -1;
 }
 
@@ -301,8 +312,8 @@ sub D {
     return;
 }
 
-# TODO More variety!
 sub chat {
+    # TODO More variety!  Say sth. different!
     say @_ if ($config{'want_to_chat'});
     return;
 }
