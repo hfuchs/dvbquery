@@ -16,7 +16,7 @@ use URI::Escape;
 use Encode;
 #use Data::Dumper;
 use Getopt::Std;
-use CGI qw/unescape_HTML/;
+use CGI qw/unescapeHTML/;
 #use utf8;  # TODO WTF?  When using this, output becomes garbled!
 use feature qw/say/;
 use URI;  # TODO URI::Escape *and* URI?  Don't think so.
@@ -54,7 +54,7 @@ if ($from = sanitize_input($args{'f'})) {
         display_departure($from);
     }
 } else {
-    chat("Mind telling me WTF you want?  Much appreciated...");
+    #chat("Mind telling me WTF you want?  Much appreciated...");
     display_help();
 }
 
@@ -298,10 +298,10 @@ sub display_help {
     # TODO Use POD.
     say "DVB query script";
     say "Usage:";
-    say "  Display station info   -    $0 -f [station]";
-    say "  Route planning         -    $0 -f [from] -t [to] [-a [at]]";
+    say "  Display station info   -    dvb -f [station]";
+    say "  Route planning         -    dvb -f [from] -t [to] [-a [at]]";
     say "\nExample:";
-    say "  $0 -f albertplatz -t 'plauen nöthnitzer straße' -a '19:00'";
+    say "  dvb -f albertplatz -t 'plauen nöthnitzer straße' -a '19:00'";
     #say "----";
     #say "2010, Hagen Fuchs <hagen.fuchs@physik.tu-dresden.de>";
     exit -1;
