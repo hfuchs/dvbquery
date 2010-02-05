@@ -1,19 +1,25 @@
 #!/usr/bin/perl -w
 # 2010-02-03, Created by H Fuchs <hagen.fuchs@physik.tu-dresden.de>
+# The GNU Public Licence applies, but if this script breaks your legs, don't
+# come running to me!
+#
 # Witz: Wenn die Anfrage nicht länger als 10 Tage her ist, nimm die Daten
 # einfach aus dem Cache.  Noch cooler: Liefere immer aus dem Cache, aber
 # starte einen thread, der nochmal kontrolliert.
 
-use LWP::Simple;  # Or WWW::Mechanize?
+#use strict; # TODO :)
+use LWP::Simple;   # TODO Either LWP *or* Mech!
+use WWW::Mechanize 1.5;
+use HTML::TreeBuilder;
 use URI::Escape;
-use Text::Iconv;
+#use Text::Iconv;
 use Encode;
-use Data::Dumper;
+#use Data::Dumper;
 use Getopt::Std;
-use CGI;
+use CGI qw/unescape_HTML/;
 use utf8;
 use feature qw/say/;
-use URI;
+use URI;  # TODO URI::Escape *and* URI?  Don't think so.
 
 
 # --- Globals
@@ -29,14 +35,18 @@ my %config     = (  # TODO Put all config here.
 # --- Main
 #
 # Some object inits (TODO put somewhere else)
-my $to_utf8  = Text::Iconv->new("latin1", "utf8");
-my $to_latin = Text::Iconv->new("utf8", "latin1");
+#my $to_utf8  = Text::Iconv->new("latin1", "utf8");
+#my $to_latin = Text::Iconv->new("utf8", "latin1");
 
 # Command-line parsing
+my %args;
+getopts("f:t:a:", \%args);
+my $time = $args{'a'};  # "at"
+
 # TODO No args?  Ask.
 # TODO Support user-definable abbreviations (eg 'NÖ', 'HB' etc).
-if ($from = sanitize_input($ARGV[0])) {
-    if ($to = sanitize_input($ARGV[1])) {
+if ($from = sanitize_input($args{'f'})) {
+    if ($to = sanitize_input($args{'t'})) {
         display_connections($from, $to);
     } else {
         display_departure($from);
@@ -58,8 +68,8 @@ sub display_connections {
         # Now on to the real connection data.
         #$result = parse_connection_data(fetch_connection_data($from, $to));
         # TODO Fix this shit.
-        #fetch_connection_data($from, $to);
-        say "This shit ain't going to work anytime soon...";
+        fetch_connection_data($from, $to);
+        #say "This shit ain't going to work anytime soon...";
     };
 
     return;
@@ -69,38 +79,106 @@ sub parse_connection_data {
 }
 
 sub fetch_connection_data {
-    my ($from, $to) = @_;
-    $from = $to_latin->convert($from); # TODO Ugly - perhaps map() might help.
-    $to   = $to_latin->convert($to);
-
     D("-> fetch_connection_data");
 
-    my $departure_or_arrival = 'Ankunft';
-    my $date                 = '28.1.2010';
-    my $time                 = '13:00';
+    # TODO $time still global
+    my ($from, $to) = @_;
+    #$from = $to_latin->convert($from); # TODO Ugly - perhaps map() might help.
+    #$to   = $to_latin->convert($to);
 
-    chat("So, going from '$from' to '$to', are we?");
+    #say ($url);# or die "$!";
+    # See HTML::Element for operations on the tree, HTML::TreeBuilder for
+    # parsing information and WWW::Mechanize for general documentation.
+    my $mech = new WWW::Mechanize;
 
-    # Original query string from function showSchedule() in 'desk.js' of the
-    # 'dvb-fahrplanauskunft-12_vista.zip' widget.
-    # More headaches.  encodeURI() in JavaScript does *not* encode these
-    # chars: ! # $ & ' ( ) * + , - . / : ; = ? @ _ ~
-    # <http://unspecified.wordpress.com/2008/05/24/uri-encoding/>
-    my $url = 
-        "http://www.dvb.de/de/Fahrplan/Verbindungsauskunft/direkt.do?" .
-        "vaform[starttypeswitch_stop]=1&vaform[zieltypeswitch_stop]=1&" .
-        "vaform[startort]="   . $ort                  . 
-        "&vaform[startname]=" . $from                 . 
-        "&vaform[zielort]="   . $ort                  . 
-        "&vaform[zielname]="  . $to                   . 
-        "&vaform[zeittyp]="   . $departure_or_arrival . 
-        "&vaform[datum]="     . $date                 . 
-        "&vaform[zeit]="      . $time;
-        
-    say $url;
-    say uri_escape($url, '^!#$()*+,-./:;=?\&\@_~A-Za-z0-9');
-#say ($url);# or die "$!";
+    # TODO Zum Kotzen.
+    my ($sec,$min,$hour,$day,$month,$year,,,) = localtime(time);
+    $year = $year+1900;
+    $time = "$hour:$min" unless ($time);
 
+    $mech->get('http://dvb.de'); # TODO variable?
+    # TODO decode_utf8(), really?
+    my $page = $mech->submit_form(
+        'with_fields' => {
+            'vaform[datum]'     =>  "$day." . ++$month . ".$year",
+            'vaform[startname]' =>  decode_utf8($from),
+            'vaform[startort]'  =>  'Dresden',
+            'vaform[zeit]'      =>  $time,
+            'vaform[zeittyp]'   =>  'dep',
+            'vaform[zielname]'  =>  decode_utf8($to),
+            'vaform[zielort]'   =>  'Dresden',
+        }
+    );
+
+    # TODO Factor out into parse_connection_data()!
+    if ($mech->success) {
+        # TODO Why does the TreeBuilder still need UTF-8 decoding?
+        my $tree = HTML::TreeBuilder->new_from_content(decode_utf8 $page->content);
+
+        # Find all "full trip" tables and parse each one.
+        say "-"x70;
+        my @rides = $tree->look_down( '_tag' , 'table', 'class', 'full trip' );
+        foreach my $ride (@rides) {
+            my @stops = $ride->look_down( '_tag', 'tr' );
+            foreach my $stop (@stops) {
+                # Remove elements that add no information.
+                my @bastards = $stop->look_down('_tag', 'ul', 'class', 'linkliste');
+                push @bastards, $stop->look_down('_tag', 'img');
+                $_->delete foreach (@bastards);
+
+                # Find the individual description elements.  Entries:
+                #  - time
+                #  - "ab"/"an"
+                #  - station
+                #  - additional information
+                my @desc = $stop->look_down( '_tag', 'td' );
+                my $tmp = $desc[0]->as_text.' '.$desc[1]->as_text.' '.$desc[2]->as_text;
+                print encode_utf8 $tmp;
+
+                # Parsing the badly-formatted info-string
+                # TODO Linienänderungen!  ul class=changelist
+                # TODO Überfahrhilfe!  </br>Überfahrhilfe
+                foreach my $info ($desc[4]->look_down('_tag','td')) {
+                    if (my $bold =  $info->look_down('_tag','b')) {
+                        my $line = $bold->as_text;
+                        $line =~ s/^[^0-9]*([0-9]*)[^0-9]*$/$1/;
+                        print " ($line)";
+                        $bold->delete;
+                    }
+                    if (my $note = $info->as_text) {
+                        print "\n\t" . encode_utf8 $note;
+                    }
+                }
+                print "\n";
+            }
+            say "-"x70;
+        }
+        $tree->delete;
+    } else {
+        say STDERR "Error: ", $mech->response->status_line;
+    }
+
+    #my $departure_or_arrival = 'Ankunft';
+    #
+    ## Original query string from function showSchedule() in 'desk.js' of the
+    ## 'dvb-fahrplanauskunft-12_vista.zip' widget.
+    ## More headaches.  encodeURI() in JavaScript does *not* encode these
+    ## chars: ! # $ & ' ( ) * + , - . / : ; = ? @ _ ~
+    ## <http://unspecified.wordpress.com/2008/05/24/uri-encoding/>
+    #my $url = 
+    #    "http://www.dvb.de/de/Fahrplan/Verbindungsauskunft/direkt.do?" .
+    #    "vaform[starttypeswitch_stop]=1&vaform[zieltypeswitch_stop]=1&" .
+    #    "vaform[startort]="   . $ort                  . 
+    #    "&vaform[startname]=" . $from                 . 
+    #    "&vaform[zielort]="   . $ort                  . 
+    #    "&vaform[zielname]="  . $to                   . 
+    #    "&vaform[zeittyp]="   . $departure_or_arrival . 
+    #    "&vaform[datum]="     . $date                 . 
+    #    "&vaform[zeit]="      . $time;
+    #    
+    #say $url;
+    #say uri_escape($url, '^!#$()*+,-./:;=?\&\@_~A-Za-z0-9');
+    #
     #return $to_utf8->convert(CGI::unescapeHTML(get($url)))
     #    or die "TODO - I died.  Completely unexpected, too!";
 }
@@ -155,7 +233,7 @@ sub fetch_departure_data {
         # TODO Not sure about these.
         # +"&vm="+preferenceForKey('vmPrefChecked')
         # +"&lim="+preferenceForKey('listitemsPrefChecked'));
-    return encode_utf8(CGI::unescapeHTML(get($url)))
+    return encode_utf8(unescapeHTML(get($url)))
         or die "TODO - I died!";
 }
 
