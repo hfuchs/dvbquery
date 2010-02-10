@@ -29,6 +29,7 @@ my $ort        = "Dresden";
 my %config     = (  # TODO Put all config here.
     'want_to_chat' => 1,
     'debug'        => 0,
+    # TODO Define default output-format here: Markdown or "chat".
 );
 
 
@@ -40,21 +41,35 @@ my %config     = (  # TODO Put all config here.
 
 # Command-line parsing
 my %args;
-getopts("f:t:a:h", \%args);
-my $time = $args{'a'};  # "at"
+getopts("f:t:a:c:h", \%args);  # opts: from, to, at, complex, help
+my $time    = $args{'a'};
+my $complex = $args{'c'};
 
 display_help if ($args{'h'});
 
+# TODO Support a string like
+#      "hauptbahnhof,albertplatz,8:00;albertplatz,fiedlerstraße,18:00"
 # TODO No args?  Ask.
 # TODO Support user-definable abbreviations (eg 'NÖ', 'HB' etc).
-if ($from = sanitize_input($args{'f'})) {
+if ($complex) {
+    return; # TODO!
+    chat("What a journey!  Let's see...");
+    my @itinerary = parse_complex_input($complex); # Array of hash refs
+    my @plan;
+    foreach my $trip (@itinerary) {
+        $time = $trip->{'time'} if $trip->{'time'};
+        $from = $trip->{'from'} if $trip->{'from'};
+        $to   = $trip->{'to'}   if $trip->{'to'};
+        push @plan, parse_connection_data($from, $to);
+    }
+} elsif ($from = sanitize_input($args{'f'})) {
     if ($to = sanitize_input($args{'t'})) {
-        display_connections($from, $to);
+        display_connections($from, $to); # TODO Pass time as well.
     } else {
         display_departure($from);
     }
 } else {
-    #chat("Mind telling me WTF you want?  Much appreciated...");
+    chat("Would it bother you very much telling me what it is you want?");
     display_help();
 }
 
