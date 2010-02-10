@@ -76,33 +76,50 @@ if ($complex) {
 
 # --- Subroutines
 sub display_connections {
-    # TODO Format of "Fußgänger"-entries is not quite cute.
-    D("TODO: display_connections");
+    # TODO Direct output to Markdown would be nice.
     my ($from, $to) = @_;
 
     chat("Travelling from '" . $from . "' to '" . $to . "', I see.");
-    if (check_station_uniqueness(($from, $to))) {
-        # Now on to the real connection data.
-        parse_connection_data(fetch_connection_data($from, $to));
-        # TODO perhaps rather:
-        # $result = parse_connection_data(fetch_connection_data($from, $to));
-    };
 
-    return;
+    if (check_station_uniqueness($from, $to)) {
+
+        # Now on to the real connection data.
+        $result = parse_connection_data(fetch_connection_data($from, $to));
+
+        if (scalar(@$result) > 0) {
+            # TODO witty chat here
+            foreach my $entry (@$result) {
+                # TODO Should I use formats for that?
+                my $tmp = $entry->{'time'}.' '.$entry->{'aban'}.' '.$entry->{'station'};
+                print encode_utf8 $tmp;  # TODO encode_utf8 necessary?
+                print " ($entry->{'line'})" if ($entry->{'line'});
+                if ($entry->{'note'}) {
+                    print "\n\t" . encode_utf8 $entry->{'note'}; # TODO encode_utf8?
+                }
+                print "\n";
+            }
+        } else {
+            # TODO more wittiness here!  And error checking, of course...
+        }
+    }
+    return 1;
 }
 
 sub parse_connection_data {
-    # TODO Shouldn't talk!  Instead return sorted data.
+    # Note: You'll have to verify for yourself, whether all the fields are
+    # actually defined.  TODO Or should I do this?
     my $tree = HTML::TreeBuilder->new_from_content(shift);
+    my $result;
 
     # Find all "full trip" tables and parse each one.
-    say "-"x70;
     my @rides = $tree->look_down( '_tag' , 'table', 'class', 'full trip' );
+    my $i = 0;  # Index of rides, to be used in $result
     foreach my $ride (@rides) {
         my @stops = $ride->look_down( '_tag', 'tr' );
         foreach my $stop (@stops) {
             # Remove elements that add no information.
-            my @bastards = $stop->look_down('_tag', 'ul', 'class', 'linkliste');
+            my @bastards = $stop->look_down('_tag', 'ul', 'class',
+                'linkliste');
             push @bastards, $stop->look_down('_tag', 'img');
             $_->delete foreach (@bastards);
 
@@ -110,30 +127,31 @@ sub parse_connection_data {
             #  - time
             #  - "ab"/"an"
             #  - station
-            #  - additional information
+            #  - additional information (Those are often quite tricky!)
             my @desc = $stop->look_down( '_tag', 'td' );
-            my $tmp = $desc[0]->as_text.' '.$desc[1]->as_text.' '.$desc[2]->as_text;
-            print encode_utf8 $tmp;
+            $result->[$i]->{'time'}    = $desc[0]->as_text;
+            $result->[$i]->{'aban'}    = $desc[1]->as_text;  # TODO Key name?
+            $result->[$i]->{'station'} = $desc[2]->as_text;
 
-            # Parsing the badly-formatted info-string
+            # Parsing the badly-formatted info-string $desc[4]
             # TODO Linienänderungen!  ul class=changelist
             # TODO Überfahrhilfe!  </br>Überfahrhilfe
+            # TODO Format of "Fußgänger"-entries is not quite cute.
             foreach my $info ($desc[4]->look_down('_tag','td')) {
-                if (my $bold =  $info->look_down('_tag','b')) {
+                if (my $bold = $info->look_down('_tag','b')) {
                     my $line = $bold->as_text;
                     $line =~ s/^[^0-9]*([0-9]*)[^0-9]*$/$1/;
-                    print " ($line)";
+                    $result->[$i]->{'line'} = $line;
                     $bold->delete;
                 }
-                if (my $note = $info->as_text) {
-                    print "\n\t" . encode_utf8 $note;
-                }
+                $result->[$i]->{'note'} = $info->as_text;
             }
-            print "\n";
+            $i++;
         }
-        say "-"x70;
     }
     $tree->delete;
+
+    return $result;
 }
 
 sub fetch_connection_data {
