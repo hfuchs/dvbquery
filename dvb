@@ -47,21 +47,10 @@ my $complex = $args{'c'};
 
 display_help if ($args{'h'});
 
-# TODO Support a string like
-#      "hauptbahnhof,albertplatz,8:00;albertplatz,fiedlerstraße,18:00"
 # TODO No args?  Ask.
 # TODO Support user-definable abbreviations (eg 'NÖ', 'HB' etc).
 if ($complex) {
-    return; # TODO!
-    chat("What a journey!  Let's see...");
-    my @itinerary = parse_complex_input($complex); # Array of hash refs
-    my @plan;
-    foreach my $trip (@itinerary) {
-        $time = $trip->{'time'} if $trip->{'time'};
-        $from = $trip->{'from'} if $trip->{'from'};
-        $to   = $trip->{'to'}   if $trip->{'to'};
-        push @plan, parse_connection_data($from, $to);
-    }
+    display_itinerary($complex);
 } elsif ($from = sanitize_input($args{'f'})) {
     if ($to = sanitize_input($args{'t'})) {
         display_connections($from, $to); # TODO Pass time as well.
@@ -75,6 +64,41 @@ if ($complex) {
 
 
 # --- Subroutines
+sub display_itinerary {
+    my $plan = shift;
+
+    #chat("What a journey!  Let's see...");
+    # No chatting, this is serious business.
+    $config{'want_to_chat'} = 0;
+
+    my @itinerary = parse_complex_plan($plan); # Array of hash refs
+
+    foreach my $trip (@itinerary) {
+        $time = $trip->{'time'} if $trip->{'time'};
+        $from = $trip->{'from'} if $trip->{'from'};
+        $to   = $trip->{'to'}   if $trip->{'to'};
+        display_connections($from, $to);
+    }
+}
+
+# TODO Define a test function, which one could paste into the terminal to
+# exercise all program paths.
+sub parse_complex_plan {
+    # Parse a string like
+    # 'hauptbahnhof,albertplatz,8:00;albertplatz,fiedlerstraße,18:00'.
+    my $plan = shift;
+    my @trips;  # The resulting array of individual from-to-at-trips.
+
+    foreach my $trip (split /;/, $plan) {
+        # TODO As time might well be emtpy, will I run into trouble with the
+        # anon. hash?
+        my ($from, $to, $time) = split /,/, $trip;
+        push @trips, { 'from' => $from, 'to' => $to, 'time' => $time };
+    }
+
+    return @trips;
+}
+
 sub display_connections {
     # TODO Direct output to Markdown would be nice.
     my ($from, $to) = @_;
@@ -98,6 +122,7 @@ sub display_connections {
                 }
                 print "\n";
             }
+            print "\n";
         } else {
             # TODO more wittiness here!  And error checking, of course...
         }
@@ -303,8 +328,12 @@ sub display_help {
     say "Usage:";
     say "  Display station info   -    dvb -f [station]";
     say "  Route planning         -    dvb -f [from] -t [to] [-a [at]]";
-    say "\nExample:";
+    say "  Complex route planning -    dvb -c [route specification]";
+    say "\nComplex Route Specification:";
+    say "  [from,to,at;from,to,at;...]";
+    say "\nExamples:";
     say "  dvb -f albertplatz -t 'plauen nöthnitzer straße' -a '19:00'";
+    say "  dvb -c 'albertplatz,hauptbahnhof,9:00;plauen nöthnitzer straße,albertplatz,19:00'";
     #say "----";
     #say "2010, Hagen Fuchs <hagen.fuchs@physik.tu-dresden.de>";
     exit -1;
