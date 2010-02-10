@@ -83,7 +83,7 @@ sub display_connections {
     chat("Travelling from '" . $from . "' to '" . $to . "', I see.");
     if (check_station_uniqueness(($from, $to))) {
         # Now on to the real connection data.
-        fetch_connection_data($from, $to);
+        parse_connection_data(fetch_connection_data($from, $to));
         # TODO perhaps rather:
         # $result = parse_connection_data(fetch_connection_data($from, $to));
     };
@@ -92,19 +92,54 @@ sub display_connections {
 }
 
 sub parse_connection_data {
-    # TODO Animate me!
+    # TODO Shouldn't talk!  Instead return sorted data.
+    my $tree = HTML::TreeBuilder->new_from_content(shift);
+
+    # Find all "full trip" tables and parse each one.
+    say "-"x70;
+    my @rides = $tree->look_down( '_tag' , 'table', 'class', 'full trip' );
+    foreach my $ride (@rides) {
+        my @stops = $ride->look_down( '_tag', 'tr' );
+        foreach my $stop (@stops) {
+            # Remove elements that add no information.
+            my @bastards = $stop->look_down('_tag', 'ul', 'class', 'linkliste');
+            push @bastards, $stop->look_down('_tag', 'img');
+            $_->delete foreach (@bastards);
+
+            # Find the individual description elements.  Entries:
+            #  - time
+            #  - "ab"/"an"
+            #  - station
+            #  - additional information
+            my @desc = $stop->look_down( '_tag', 'td' );
+            my $tmp = $desc[0]->as_text.' '.$desc[1]->as_text.' '.$desc[2]->as_text;
+            print encode_utf8 $tmp;
+
+            # Parsing the badly-formatted info-string
+            # TODO Linienänderungen!  ul class=changelist
+            # TODO Überfahrhilfe!  </br>Überfahrhilfe
+            foreach my $info ($desc[4]->look_down('_tag','td')) {
+                if (my $bold =  $info->look_down('_tag','b')) {
+                    my $line = $bold->as_text;
+                    $line =~ s/^[^0-9]*([0-9]*)[^0-9]*$/$1/;
+                    print " ($line)";
+                    $bold->delete;
+                }
+                if (my $note = $info->as_text) {
+                    print "\n\t" . encode_utf8 $note;
+                }
+            }
+            print "\n";
+        }
+        say "-"x70;
+    }
+    $tree->delete;
 }
 
 sub fetch_connection_data {
-    # TODO Much too big.
-    D("-> fetch_connection_data");
-
     # TODO $time still global
     my ($from, $to) = @_;
-    #$from = $to_latin->convert($from); # TODO Ugly - perhaps map() might help.
-    #$to   = $to_latin->convert($to);
 
-    #say ($url);# or die "$!";
     # See HTML::Element for operations on the tree, HTML::TreeBuilder for
     # parsing information and WWW::Mechanize for general documentation.
     my $mech = new WWW::Mechanize;
@@ -128,77 +163,12 @@ sub fetch_connection_data {
         }
     );
 
-    # TODO Factor out into parse_connection_data()!
     if ($mech->success) {
-        # TODO Why does the TreeBuilder still need UTF-8 decoding?
-        my $tree = HTML::TreeBuilder->new_from_content(decode_utf8 $page->content);
-
-        # Find all "full trip" tables and parse each one.
-        say "-"x70;
-        my @rides = $tree->look_down( '_tag' , 'table', 'class', 'full trip' );
-        foreach my $ride (@rides) {
-            my @stops = $ride->look_down( '_tag', 'tr' );
-            foreach my $stop (@stops) {
-                # Remove elements that add no information.
-                my @bastards = $stop->look_down('_tag', 'ul', 'class', 'linkliste');
-                push @bastards, $stop->look_down('_tag', 'img');
-                $_->delete foreach (@bastards);
-
-                # Find the individual description elements.  Entries:
-                #  - time
-                #  - "ab"/"an"
-                #  - station
-                #  - additional information
-                my @desc = $stop->look_down( '_tag', 'td' );
-                my $tmp = $desc[0]->as_text.' '.$desc[1]->as_text.' '.$desc[2]->as_text;
-                print encode_utf8 $tmp;
-
-                # Parsing the badly-formatted info-string
-                # TODO Linienänderungen!  ul class=changelist
-                # TODO Überfahrhilfe!  </br>Überfahrhilfe
-                foreach my $info ($desc[4]->look_down('_tag','td')) {
-                    if (my $bold =  $info->look_down('_tag','b')) {
-                        my $line = $bold->as_text;
-                        $line =~ s/^[^0-9]*([0-9]*)[^0-9]*$/$1/;
-                        print " ($line)";
-                        $bold->delete;
-                    }
-                    if (my $note = $info->as_text) {
-                        print "\n\t" . encode_utf8 $note;
-                    }
-                }
-                print "\n";
-            }
-            say "-"x70;
-        }
-        $tree->delete;
+        return decode_utf8 $page->content
     } else {
+        # TODO You should probably die or carp or something.
         say STDERR "Error: ", $mech->response->status_line;
     }
-
-    #my $departure_or_arrival = 'Ankunft';
-    #
-    ## Original query string from function showSchedule() in 'desk.js' of the
-    ## 'dvb-fahrplanauskunft-12_vista.zip' widget.
-    ## More headaches.  encodeURI() in JavaScript does *not* encode these
-    ## chars: ! # $ & ' ( ) * + , - . / : ; = ? @ _ ~
-    ## <http://unspecified.wordpress.com/2008/05/24/uri-encoding/>
-    #my $url = 
-    #    "http://www.dvb.de/de/Fahrplan/Verbindungsauskunft/direkt.do?" .
-    #    "vaform[starttypeswitch_stop]=1&vaform[zieltypeswitch_stop]=1&" .
-    #    "vaform[startort]="   . $ort                  . 
-    #    "&vaform[startname]=" . $from                 . 
-    #    "&vaform[zielort]="   . $ort                  . 
-    #    "&vaform[zielname]="  . $to                   . 
-    #    "&vaform[zeittyp]="   . $departure_or_arrival . 
-    #    "&vaform[datum]="     . $date                 . 
-    #    "&vaform[zeit]="      . $time;
-    #    
-    #say $url;
-    #say uri_escape($url, '^!#$()*+,-./:;=?\&\@_~A-Za-z0-9');
-    #
-    #return $to_utf8->convert(CGI::unescapeHTML(get($url)))
-    #    or die "TODO - I died.  Completely unexpected, too!";
 }
 
 sub display_departure {
