@@ -309,7 +309,12 @@ sub check_station_uniqueness {
 }
 
 sub sanitize_input {
-    return decode_utf8((@_)); # TODO Is that all as regards sanitization?
+    # TODO Is that all as regards sanitization?
+    if (scalar(@_) > 1) {
+        return map { $_ = decode_utf8($_); } @_;
+    } else {
+        return decode_utf8(shift);
+    }
 }
 
 sub display_help {
