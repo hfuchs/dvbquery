@@ -59,35 +59,114 @@ if ($complex) {
 
 # --- Subroutines
 sub display_itinerary {
-    my $plan = shift;
+    my (@plans) = @_;
+
+    say foreach (@plans);
 
     #chat("What a journey!  Let's see...");
     # No chatting, this is serious business.
     $config{'want_to_chat'} = 0;
 
-    my @itinerary = parse_complex_plan($plan); # Array of hash refs
+    foreach my $plan (@plans) {
+        my @itinerary = parse_complex_plan($plan); # Array of hash refs
 
-    foreach my $trip (@itinerary) {
-        $time = $trip->{'time'} if $trip->{'time'};
-        $from = $trip->{'from'} if $trip->{'from'};
-        $to   = $trip->{'to'}   if $trip->{'to'};
-        display_connections($from, $to);
+        foreach my $trip (@itinerary) {
+            use Data::Dumper;
+            say Dumper $trip;
+            $time = $trip->{'time'}              if $trip->{'time'};
+            $from = $trip->{'from'}->{'station'} if $trip->{'from'}->{'station'};
+            $to   = $trip->{'to'}->{'station'}   if $trip->{'to'}->{'station'};
+            display_connections($from, $to);
+        }
     }
 }
 
-# TODO Define a test function, which one could paste into the terminal to
-# exercise all program paths.
 sub parse_complex_plan {
-    # Parse a string like
-    # 'hauptbahnhof,albertplatz,8:00;albertplatz,fiedlerstraße,18:00'.
-    my $plan = shift;
-    my @trips;  # The resulting array of individual from-to-at-trips.
+    # Parses strings like
+    # 'hauptbahnhof;albertplatz;albertplatz,fiedlerstraße,9:00'
+    # to produce an array like this:
+    # @trips = (
+    #    {
+    #      'from' => { 'town', 'station' },
+    #      'to'   => { 'town', 'station' },
+    #      'time' => [time_string, eg: 20:00],
+    #      'type' => [string, departure ("ab") or arrival ("an")]
+    #    },
+    #    { 'from' => ...
+    # );
+    #
+    #
+    # TODO Later (more advanced): Parse
+    # 'Dresden, hauptbahnhof@9:00;Weinböhla,weinböhla HP' and
+    # 'From: haupbahnhof@9:00 TO: albertplatz to: fiedlerstraße, 9:00' or even
+    # 'Von: hauptbahnhof, 9:00 nach: albertplatz von: fiedlerstraße, 17.00
+    #  nach hauptbahnhof'!
+    # TODO Define a test function, which one could paste into the terminal to
+    # exercise all program paths.  Or: How do you test shit like this?
+    my @records = split /;/, shift;
+    my @trips;  # The complex datatype described above.
 
-    foreach my $trip (split /;/, $plan) {
-        # TODO As time might well be emtpy, will I run into trouble with the
-        # anon. hash?
-        my ($from, $to, $time) = split /,/, $trip;
-        push @trips, { 'from' => $from, 'to' => $to, 'time' => $time };
+    for (my $i=0; $i < scalar(@records); $i=$i+2) {
+        my %trip;
+
+        # Odd records - departure specification
+        my @fields = split /,/, $records[$i];
+
+        use feature 'switch';  # TODO Preampleize!
+        given (scalar(@fields)) {
+            when (2) {
+                $trip{'from'}->{'town'} = $fields[0];
+                my ($station, $time) = split /@/, $fields[1];
+                if ($time) {
+                    $trip{'time'} = $time;
+                    $trip{'type'} = 'ab';
+                };
+                $trip{'from'}->{'station'} = $station;
+            }
+            when (1) {
+                my ($station, $time) = split /@/, $fields[0];
+                if ($time) {
+                    $trip{'time'} = $time;
+                    $trip{'type'} = 'ab';
+                };
+                $trip{'from'}->{'station'} = $station;
+            }
+            default { die "What a dump."; }
+
+        }
+
+        # Even records - arrival specification
+        # TODO Lots of redundant code
+        @fields = split /,/, $records[$i+1];
+
+        use feature 'switch';  # TODO Preampleize!
+        given (scalar(@fields)) {
+            when (2) {
+                $trip{'to'}->{'town'} = $fields[0];
+                my ($station, $time) = split /@/, $fields[1];
+                # TODO if both $departure_time and $arrival_time are specified,
+                # the later overrides the former.  Is this what you would expect?
+                if ($time) {
+                    $trip{'time'} = $time;
+                    $trip{'type'} = 'an';
+                };
+                $trip{'to'}->{'station'} = $station;
+            }
+            when (1) {
+                my ($station, $time) = split /@/, $fields[0];
+                # TODO if both $departure_time and $arrival_time are specified,
+                # the later overrides the former.  Is this what you would expect?
+                if ($time) {
+                    $trip{'time'} = $time;
+                    $trip{'type'} = 'an';
+                };
+                $trip{'to'}->{'station'} = $station;
+            }
+            default { die "What a dump."; }
+        }
+
+
+        push @trips, \%trip;
     }
 
     return @trips;
