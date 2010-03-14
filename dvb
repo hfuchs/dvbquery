@@ -13,9 +13,9 @@ use LWP::Simple;   # TODO Either LWP *or* Mech!
 use WWW::Mechanize 1.5;
 use HTML::TreeBuilder;
 use Encode;
-use Getopt::Std;
+use Getopt::Long;    # Able to take the same option multiple times.
 use CGI qw/unescapeHTML/;
-use feature qw/say/;  # TODO Do I really need it that bad?
+use feature qw/say switch/;
 use URI;
 
 
@@ -28,25 +28,28 @@ my %config     = (  # TODO Put all config here.
     'debug'        => 0,
     # TODO Define default output-format here: Markdown or "chat".
 );
-my $from; my $to;  # TODO Too global for my taste.
 
 
 # --- Main
 
 # Command-line parsing
-my %args;
-getopts("f:t:a:c:h", \%args);  # opts: from, to, at, complex, help
-my $time    = $args{'a'};
-my $complex = $args{'c'};
+my ($from, $to, $time, @complex, $help);
+GetOptions(
+    'from:s'    => \$from,  # TODO Allow eg. 'Dresden, Hauptbahnhof'.
+    'to:s'      => \$to,
+    'at:s'      => \$time,  # TODO Change to departure, arrival
+    'complex:s' => \@complex,
+    'help'      => \$help,
+);
 
-display_help() if ($args{'h'});
+display_help() if ($help);
 
-# TODO No args?  Ask.
+# TODO No args?  Ask.  Better still, start interactive prompt.
 # TODO Support user-definable abbreviations (eg 'NÖ', 'HB' etc).
-if ($complex) {
-    display_itinerary(sanitize_input($complex));
-} elsif ($from = sanitize_input($args{'f'})) {
-    if ($to = sanitize_input($args{'t'})) {
+if (@complex) {
+    display_itinerary(sanitize_input(@complex));
+} elsif ($from = sanitize_input($from)) {
+    if ($to = sanitize_input($to)) {
         display_connections($from, $to); # TODO Pass time as well.
     } else {
         display_departure($from);
