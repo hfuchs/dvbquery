@@ -179,7 +179,8 @@ sub display_connections {
     # TODO Direct output to Markdown would be nice.
     my ($from, $to) = @_;
 
-    chat("Travelling from '" . $from . "' to '" . $to . "', I see.");
+    #chat("Travelling from '" . $from . "' to '" . $to . "', I see.");
+    say("Travelling from '" . $from . "' to '" . $to . "', I see.");
 
     if (check_station_uniqueness($from, $to)) {
 
@@ -367,8 +368,17 @@ sub fetch_station_data {
     # URL(to_latin)   =plauen%20n%F6thnitzer%20stra%DFe
 
     my $url  = URI->new($server_url . "Haltestelle.do?ort=$ort&hst=$station");
-    return decode_utf8(CGI::unescapeHTML(get($url)))
-        or die "TODO - I died!";
+    eval {
+        my $page = get($url) or die "Network";
+        $page = decode_utf8 CGI::unescapeHTML($page) or die "Fatal";
+        return $page;
+    };
+    if (my $E = $@) {
+        given ($E) {
+            when (/Network/) { die "Sorry, the DVB server is down.\n" }
+            default          { die "Fatal" }
+        }
+    }
 }
 
 sub check_station_uniqueness {
