@@ -181,7 +181,7 @@ sub display_connections {
     my ($from, $to) = @_;
 
     #chat("Travelling from '" . $from . "' to '" . $to . "', I see.");
-    say("Travelling from '" . $from . "' to '" . $to . "', I see.");
+    say("Travelling from '" . $from . "' to '" . $to . "', I see.\n");
 
     if (check_station_uniqueness($from, $to)) {
 
@@ -190,18 +190,19 @@ sub display_connections {
 
         if (scalar(@$result) > 0) {
             # TODO witty chat here
-            foreach my $entry (@$result) {
-                # TODO Should I use formats for that?
-                print $entry->{'time'}.' '.$entry->{'aban'}.' '.$entry->{'station'};
-                print " ($entry->{'line'})" if ($entry->{'line'});
-                if ($entry->{'note'}) {
-                    print "\n\t" . $entry->{'note'};
+            foreach my $ride (@$result) {
+                foreach my $stop (@$ride) {
+                    print $stop->{'time'}.' '.$stop->{'aban'}.' '.$stop->{'station'};
+                    print " ($stop->{'line'})" if ($stop->{'line'});
+                    if ($stop->{'note'}) {
+                        print "\n\t" . $stop->{'note'};
+                    }
+                    print "\n";
                 }
                 print "\n";
             }
-            print "\n";
         } else {
-            # TODO more wittiness here!  And error checking, of course...
+            say "That's odd ... no connection results?";
         }
     }
     return 1;
@@ -218,6 +219,7 @@ sub parse_connection_data {
     my $i = 0;  # Index of rides, to be used in $result
     foreach my $ride (@rides) {
         my @stops = $ride->look_down( '_tag', 'tr' );
+        my $k = 0;  # Index of stops in each ride.
         foreach my $stop (@stops) {
             # Remove elements that add no information.
             my @bastards = $stop->look_down('_tag', 'ul', 'class',
@@ -231,9 +233,9 @@ sub parse_connection_data {
             #  - station
             #  - additional information (Those are often quite tricky!)
             my @desc = $stop->look_down( '_tag', 'td' );
-            $result->[$i]->{'time'}    = $desc[0]->as_text;
-            $result->[$i]->{'aban'}    = $desc[1]->as_text;  # TODO Key name?
-            $result->[$i]->{'station'} = $desc[2]->as_text;
+            $result->[$i]->[$k]->{'time'}    = $desc[0]->as_text;
+            $result->[$i]->[$k]->{'aban'}    = $desc[1]->as_text;  # TODO Key name?
+            $result->[$i]->[$k]->{'station'} = $desc[2]->as_text;
 
             # Parsing the badly-formatted info-string $desc[4]
             # TODO Linienänderungen!  ul class=changelist
@@ -243,13 +245,14 @@ sub parse_connection_data {
                 if (my $bold = $info->look_down('_tag','b')) {
                     my $line = $bold->as_text;
                     $line =~ s/^[^0-9]*([0-9]*)[^0-9]*$/$1/;
-                    $result->[$i]->{'line'} = $line;
+                    $result->[$i]->[$k]->{'line'} = $line;
                     $bold->delete;
                 }
-                $result->[$i]->{'note'} = $info->as_text;
+                $result->[$i]->[$k]->{'note'} = $info->as_text;
             }
-            $i++;
+            $k++;
         }
+        $i++;
     }
     $tree->delete;
 
