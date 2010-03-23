@@ -18,6 +18,7 @@ use CGI qw/unescapeHTML/;
 use feature qw/say switch/;
 use URI;
 use Try::Tiny;
+use File::Temp qw/tempfile/;
 
 
 # --- Globals
@@ -35,12 +36,14 @@ my %config     = (  # TODO Put all config here.
 
 # Command-line parsing
 my ($from, $to, $time, @complex, $help);
+my $pdf = 1;
 GetOptions(
     'from:s'    => \$from,  # TODO Allow eg. 'Dresden, Hauptbahnhof'.
     'to:s'      => \$to,
     'at:s'      => \$time,  # TODO Change to departure, arrival
     'complex:s' => \@complex,
     'help'      => \$help,
+    'pdf'       => \$pdf,
 );
 
 display_help() if ($help);
@@ -70,6 +73,7 @@ sub display_itinerary {
     #chat("What a journey!  Let's see...");
     # No chatting, this is serious business.
     $config{'want_to_chat'} = 0;
+    $pdf = '';
 
     foreach my $plan (@plans) {
         my @itinerary = parse_complex_plan($plan); # Array of hash refs
@@ -201,6 +205,7 @@ sub display_connections {
                 }
                 print "\n";
             }
+            create_pdf_file($result) if ($pdf);
         } else {
             say "That's odd ... no connection results?";
         }
@@ -408,6 +413,41 @@ sub sanitize_input {
     } else {
         return decode_utf8(shift);
     }
+}
+
+# TODO Make this compatible with display_itinerary().  Perhaps
+# introducing push_pdf() and calling create_pdf_file() at the END would
+# be a clever solution.
+sub create_pdf_file {
+    my $rides = shift;
+    my ($tmp, $tmp_name) = tempfile();
+
+    try {
+        chat("I'll try to create a pdf, too.");
+
+        say {$tmp} encode_utf8("dvb. '$from' - '$to'\n"."-"x70);
+
+        # TODO Code duplication.
+        foreach my $ride (@$rides) {
+            foreach my $stop (@$ride) {
+                my $out = "    $stop->{'time'}";
+                $out .= " $stop->{'aban'} $stop->{'station'}";
+                $out .= " ($stop->{'line'})" if ($stop->{'line'});
+                $out .= "\n       $stop->{'note'}" if ($stop->{'note'});
+                $out .= "\n";
+                print {$tmp} encode_utf8($out);
+            }
+            print {$tmp} "\n";
+        }
+        close $tmp or die;
+
+        system("markdown2pdf $tmp_name") == 0
+            or die;
+    } catch {
+        chat("Actually, that didn't work out.  Never mind.");
+    } finally {
+        unlink $tmp_name;
+    };
 }
 
 sub display_help {
