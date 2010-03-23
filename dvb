@@ -17,6 +17,7 @@ use Getopt::Long;    # Able to take the same option multiple times.
 use CGI qw/unescapeHTML/;
 use feature qw/say switch/;
 use URI;
+use Try::Tiny;
 
 
 # --- Globals
@@ -368,16 +369,13 @@ sub fetch_station_data {
     # URL(to_latin)   =plauen%20n%F6thnitzer%20stra%DFe
 
     my $url  = URI->new($server_url . "Haltestelle.do?ort=$ort&hst=$station");
-    eval {
+    try {
         my $page = get($url) or die "Network";
         $page = decode_utf8 CGI::unescapeHTML($page) or die "Fatal";
         return $page;
-    };
-    if (my $E = $@) {
-        given ($E) {
-            when (/Network/) { die "Sorry, the DVB server is down.\n" }
-            default          { die "Fatal" }
-        }
+    } catch {
+        when (/Network/) { die "Sorry, the DVB server is down.\n" }
+        default          { die "Fatal" }
     }
 }
 
