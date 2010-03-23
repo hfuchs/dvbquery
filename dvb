@@ -68,10 +68,10 @@ if (@complex) {
 sub display_itinerary {
     my (@plans) = @_;
 
-    say foreach (@plans);
-
     #chat("What a journey!  Let's see...");
     # No chatting, this is serious business.
+    # TODO pdf creation is useless - I'm creating multiple documents
+    # instead of just one.
     $config{'want_to_chat'} = 0;
     $pdf = '';
 
@@ -79,11 +79,9 @@ sub display_itinerary {
         my @itinerary = parse_complex_plan($plan); # Array of hash refs
 
         foreach my $trip (@itinerary) {
-            use Data::Dumper;
-            say Dumper $trip;
-            $time = $trip->{'time'}              if $trip->{'time'};
-            $from = $trip->{'from'}->{'station'} if $trip->{'from'}->{'station'};
-            $to   = $trip->{'to'}->{'station'}   if $trip->{'to'}->{'station'};
+            $time = $trip->{'time'} if $trip->{'time'};
+            $from = $trip->{'from'};
+            $to   = $trip->{'to'};
             display_connections($from, $to);
         }
     }
@@ -91,18 +89,16 @@ sub display_itinerary {
 
 sub parse_complex_plan {
     # Parses strings like
-    # 'hauptbahnhof;albertplatz;albertplatz,fiedlerstraße,9:00'
-    # to produce an array like this:
+    # 'hauptbahnhof@9:00,albertplatz;albertplatz@14:00,postplatz'
+    # to produce an array like this (simple version):
     # @trips = (
     #    {
-    #      'from' => { 'town', 'station' },
-    #      'to'   => { 'town', 'station' },
+    #      'from' =>
+    #      'to'   =>
     #      'time' => [time_string, eg: 20:00],
-    #      'type' => [string, departure ("ab") or arrival ("an")]
     #    },
     #    { 'from' => ...
     # );
-    #
     #
     # TODO Later (more advanced): Parse
     # 'Dresden, hauptbahnhof@9:00;Weinböhla,weinböhla HP' and
@@ -110,71 +106,31 @@ sub parse_complex_plan {
     # 'Von: hauptbahnhof, 9:00 nach: albertplatz von: fiedlerstraße, 17.00
     #  nach hauptbahnhof'!
     # TODO Define a test function, which one could paste into the terminal to
-    # exercise all program paths.  Or: How do you test shit like this?
+    # exercise all program paths.  Use Test::More.
     my @records = split /;/, shift;
     my @trips;  # The complex datatype described above.
 
-    for (my $i=0; $i < scalar(@records); $i=$i+2) {
-        my %trip;
-
-        # Odd records - departure specification
-        my @fields = split /,/, $records[$i];
-
-        use feature 'switch';  # TODO Preampleize!
-        given (scalar(@fields)) {
-            when (2) {
-                $trip{'from'}->{'town'} = $fields[0];
-                my ($station, $time) = split /@/, $fields[1];
-                if ($time) {
-                    $trip{'time'} = $time;
-                    $trip{'type'} = 'ab';
-                };
-                $trip{'from'}->{'station'} = $station;
-            }
-            when (1) {
-                my ($station, $time) = split /@/, $fields[0];
-                if ($time) {
-                    $trip{'time'} = $time;
-                    $trip{'type'} = 'ab';
-                };
-                $trip{'from'}->{'station'} = $station;
-            }
-            default { die "What a dump."; }
-
+    # TODO Use a string parser (String::RexxParse, Parse::RecDescent)?
+    foreach my $trip (@records) {
+        my ($from, $dep_time, $to, $arr_time);
+        if ($trip =~ m/,/) {
+            my ($from_field, $to_field) = split /,/, $trip;
+            ($from, $dep_time)          = split /@/, $from_field;
+            ($to, $arr_time)            = split /@/, $to_field;
+        } else {
+            #($to, $arr_time) = split /@/, $trip;
+            say "I don't support leaving out the 'from' field, yet.  Dying.";
+            exit -1;
         }
-
-        # Even records - arrival specification
-        # TODO Lots of redundant code
-        @fields = split /,/, $records[$i+1];
-
-        use feature 'switch';  # TODO Preampleize!
-        given (scalar(@fields)) {
-            when (2) {
-                $trip{'to'}->{'town'} = $fields[0];
-                my ($station, $time) = split /@/, $fields[1];
-                # TODO if both $departure_time and $arrival_time are specified,
-                # the later overrides the former.  Is this what you would expect?
-                if ($time) {
-                    $trip{'time'} = $time;
-                    $trip{'type'} = 'an';
-                };
-                $trip{'to'}->{'station'} = $station;
-            }
-            when (1) {
-                my ($station, $time) = split /@/, $fields[0];
-                # TODO if both $departure_time and $arrival_time are specified,
-                # the later overrides the former.  Is this what you would expect?
-                if ($time) {
-                    $trip{'time'} = $time;
-                    $trip{'type'} = 'an';
-                };
-                $trip{'to'}->{'station'} = $station;
-            }
-            default { die "What a dump."; }
+        if ($arr_time) {
+            say "Not supporting arrival time specs yet.  Dying.";
+            exit -1;
         }
-
-
-        push @trips, \%trip;
+        if (not defined $dep_time) {
+            say "No departure time given.  Dying.";
+            exit -1;
+        }
+        push @trips, { 'from' => $from, 'to' => $to, 'time' => $dep_time };
     }
 
     return @trips;
@@ -184,8 +140,7 @@ sub display_connections {
     # TODO Direct output to Markdown would be nice.
     my ($from, $to) = @_;
 
-    #chat("Travelling from '" . $from . "' to '" . $to . "', I see.");
-    say("Travelling from '" . $from . "' to '" . $to . "', I see.\n");
+    chat("Travelling from '" . $from . "' to '" . $to . "', I see.\n");
 
     if (check_station_uniqueness($from, $to)) {
 
@@ -452,18 +407,17 @@ sub create_pdf_file {
 
 sub display_help {
     # TODO Use POD.
-    say "DVB query script";
+    say 'dvb - DVB query 0.4 by HF <hagen.fuchs@physik.tu-dresden.de>';
     say "Usage:";
     say "  Display station info   -    dvb -f [station]";
     say "  Route planning         -    dvb -f [from] -t [to] [-a [at]]";
     say "  Complex route planning -    dvb -c [route specification]";
     say "\nComplex Route Specification:";
-    say "  [from,to,at;from,to,at;...]";
+    say "  [from\@time,to;from\@time,to;...]";
     say "\nExamples:";
     say "  dvb -f albertplatz -t 'plauen nöthnitzer straße' -a '19:00'";
-    say "  dvb -c 'albertplatz,hauptbahnhof,9:00;plauen nöthnitzer straße,albertplatz,19:00'";
-    #say "----";
-    #say "2010, Hagen Fuchs <hagen.fuchs@physik.tu-dresden.de>";
+    say "  dvb -c 'albertplatz\@9:00,hauptbahnhof;plauen nöthnitzer straße\@18:00,albertplatz'";
+    #say "(Licence: GPL)";
     exit -1;
 }
 
