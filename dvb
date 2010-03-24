@@ -8,8 +8,7 @@
 
 use strict;
 use utf8;
-use open ':locale';  # Governs STD*, open(), readpipe(), ...
-use LWP::Simple;   # TODO Either LWP *or* Mech!
+use LWP::Simple;   # TODO Either LWP *or* Mech (more expensive)!
 use WWW::Mechanize 1.5;
 use HTML::TreeBuilder;
 use Encode;
@@ -19,7 +18,10 @@ use feature qw/say switch/;
 use URI;
 use Try::Tiny;
 use File::Temp qw/tempfile/;
-
+# TODO 'use'ing the 'open' pragma with ':locale' right after strict,
+# Perl makes 2000+ calls to decode_xs/encode_xs just in BEGIN{}!
+# Putting it at the end, solves that.  Using ':utf8' also works.
+use open ':locale';  # Governs STD*, open(), readpipe(), ...
 
 # --- Globals
 # TODO Read from config file
