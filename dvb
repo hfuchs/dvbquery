@@ -22,6 +22,7 @@ use File::Temp qw/tempfile/;
 # Perl makes 2000+ calls to decode_xs/encode_xs just in BEGIN{}!
 # Putting it at the end, solves that.  Using ':utf8' also works.
 use open ':locale';  # Governs STD*, open(), readpipe(), ...
+#use Data::Dumper;
 
 # --- Globals
 # TODO Read from config file
@@ -195,6 +196,9 @@ sub parse_connection_data {
             #  - station
             #  - additional information (Those are often quite tricky!)
             my @desc = $stop->look_down( '_tag', 'td' );
+            #say Dumper($desc[0]);
+            #say Dumper($desc[1]);
+            #say Dumper($desc[2]);
             $result->[$i]->[$k]->{'time'}    = $desc[0]->as_text;
             $result->[$i]->[$k]->{'aban'}    = $desc[1]->as_text;  # TODO Key name?
             $result->[$i]->[$k]->{'station'} = $desc[2]->as_text;
@@ -248,7 +252,7 @@ sub fetch_connection_data {
     );
 
     if ($mech->success) {
-        return decode_utf8 $page->content
+        return decode_utf8 $page->content;
     } else {
         # TODO You should probably die or carp or something.
         say STDERR "Error: ", $mech->response->status_line;
@@ -298,15 +302,23 @@ sub parse_departure_data {
 }
 
 sub fetch_departure_data {
+    # TODO fetch_*() functions have identical try-catch blocks.
     my $station = shift;
 
+    # TODO Log URL.
     my $url = URI->new($server_url .
         "Abfahrten.do?ort=$ort&hst=$station&vz=20:00");
         # TODO Not sure about these.
         # +"&vm="+preferenceForKey('vmPrefChecked')
         # +"&lim="+preferenceForKey('listitemsPrefChecked'));
-    return decode_utf8(unescapeHTML(get($url)))
-        or die "TODO - I died!";
+    try {
+        my $page = get($url) or die "Network";
+        $page = decode_utf8 CGI::unescapeHTML($page) or die "Fatal";
+        return $page;
+    } catch {
+        when (/Network/) { die "Sorry, the DVB server is down.\n" }
+        default          { die "Fatal" }
+    };
 }
 
 sub parse_station_data {
@@ -329,9 +341,6 @@ sub parse_station_data {
 
 sub fetch_station_data {
     my $station = shift;
-    # URL(decode_utf8)=plauen%20n%C3%B6thnitzer%20stra%C3%9Fe
-    # URL(nothing)    =plauen%20n%C3%B6thnitzer%20stra%C3%9Fe
-    # URL(to_latin)   =plauen%20n%F6thnitzer%20stra%DFe
 
     my $url  = URI->new($server_url . "Haltestelle.do?ort=$ort&hst=$station");
     try {
@@ -341,7 +350,7 @@ sub fetch_station_data {
     } catch {
         when (/Network/) { die "Sorry, the DVB server is down.\n" }
         default          { die "Fatal" }
-    }
+    };
 }
 
 sub check_station_uniqueness {
