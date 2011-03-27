@@ -1,0 +1,32 @@
+# Project specific
+
+
+
+# Images  & pdfs
+#*.jpg
+#*.bmp
+#*.gif
+#*.xpm
+#*.pdf
+
+# Vim backup-files
+*.sw[op]
+
+# Latex temp-files
+*.toc
+*.out
+*.log
+*.bbl
+*.blg
+*.aux
+*.tex~
+
+# Programming
+tags
+# 2011-03-27, When using Perl's MakeMaker:
+Makefile
+Makefile.old
+
+# Don't try this at home!
+#.gitignore
+
