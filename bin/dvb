@@ -18,9 +18,12 @@ use feature qw/say switch/;
 use URI;
 use Try::Tiny;
 use File::Temp qw/tempfile/;
+#use Config::Tiny;   # 2011-03-28, TODO Sucks.  Or?
 # TODO 'use'ing the 'open' pragma with ':locale' right after strict,
 # Perl makes 2000+ calls to decode_xs/encode_xs just in BEGIN{}!
 # Putting it at the end, solves that.  Using ':utf8' also works.
+# 2011-03-28, TODO The fuck?  Using ':locale' yields different results
+# with Config::Tiny than using ':utf8'.
 use open ':locale';  # Governs STD*, open(), readpipe(), ...
 #use Data::Dumper;
 
@@ -28,14 +31,29 @@ use open ':locale';  # Governs STD*, open(), readpipe(), ...
 # TODO Read from config file
 my $server_url = "http://widgets.vvo-online.de/abfahrtsmonitor/";
 my $ort        = "Dresden";
-my %config     = (  # TODO Put all config here.
-    'want_to_chat' => 1,
-    'debug'        => 0,
-    # TODO Define default output-format here: Markdown or "chat".
-);
+my $cfg_file   = "$ENV{HOME}/.dvbquery.conf";
 
 
 # --- Main
+
+# Define default, hard-coded config and list of abbreviations here, read
+# the user's config file(s) and then merge.
+# 2011-03-28, TODO ALL BADLY FUCKED UP HERE.  UTF8shit hitting me hard.
+# For now specifying abbreviations in expand_abbrev().
+#my %default_conf = (
+#    # TODO Define default output-format here: Markdown or "chat".
+#    want_to_chat => 1,
+#    debug        => 0,
+#);
+#my $default_abbreviations = (
+#    HBF => 'Hauptbahnhof',
+#    NÖ  => 'plauen nöthnitzer straße',
+#),
+#
+#my $user_conf = Config::Tiny->read($cfg_file);
+#$user_conf  ||= {};
+#my %config = (%default_conf, %$user_conf{conf});  # TODO Could write defaults here.
+my %config = ( debug => 0, want_to_chat => 1 );
 
 # Command-line parsing
 my ($from, $to, $time, @complex, $help);
