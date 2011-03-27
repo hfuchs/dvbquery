@@ -71,11 +71,10 @@ GetOptions(
 display_help() if ($help);
 
 # TODO No args?  Ask.  Better still, start interactive prompt.
-# TODO Support user-definable abbreviations (eg 'NÖ', 'HB' etc).
 if (@complex) {
-    display_itinerary(sanitize_input(@complex));
-} elsif ($from = sanitize_input($from)) {
-    if ($to = sanitize_input($to)) {
+    display_itinerary(expand_abbrev(sanitize_input(@complex)));
+} elsif ($from = expand_abbrev(sanitize_input($from))) {
+    if ($to = expand_abbrev(sanitize_input($to))) {
         display_connections($from, $to); # TODO Pass time as well.
     } else {
         display_departure($from);
@@ -401,6 +400,24 @@ sub check_station_uniqueness {
     }
 
     return 1;
+}
+
+sub expand_abbrev {
+    D();
+    return '' unless (@_);
+
+    # 2011-03-28, TODO Complete shit.
+    #my %abbrevs = %{$config{abbreviations}};
+    my %abbrevs = (
+        NÖ => 'Plauen Nöthnitzer Straße',
+        HBF => 'Hauptbahnhof',
+        RAT => 'Rathaus Plauen',
+    );
+    D("Abbreviations: ", join(", ", keys %abbrevs));
+
+    @_ = map { exists $abbrevs{$_} ? $abbrevs{$_} : $_ } @_;
+    # TODO This list-scalar distinction needs to go away!
+    return scalar(@_) > 1 ? @_ : $_[0];
 }
 
 sub sanitize_input {
