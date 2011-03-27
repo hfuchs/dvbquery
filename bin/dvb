@@ -200,6 +200,8 @@ sub parse_connection_data {
     my $result;
 
     # Find all "full trip" tables and parse each one.
+    # 2011-03-28, TODO ride->trip
+    # 2011-03-28, TODO Put the look_down()s directly into the foreach argument.
     my @rides = $tree->look_down( '_tag' , 'table', 'class', 'full trip' );
     my $i = 0;  # Index of rides, to be used in $result
     foreach my $ride (@rides) {
@@ -207,28 +209,46 @@ sub parse_connection_data {
         my $k = 0;  # Index of stops in each ride.
         foreach my $stop (@stops) {
             # Remove elements that add no information.
-            my @bastards = $stop->look_down('_tag', 'ul', 'class',
-                'linkliste');
-            push @bastards, $stop->look_down('_tag', 'img');
-            $_->delete foreach (@bastards);
+            $_->delete foreach $stop->look_down('_tag', 'ul', 'class', 'linkliste');
+            $_->delete foreach $stop->look_down('_tag', 'img', 'class', 'pictogram');
 
             # Find the individual description elements.  Entries:
             #  - time
             #  - "ab"/"an"
             #  - station
-            #  - additional information (Those are often quite tricky!)
+            #  - pictogram
+            #  - additional information (important: "Richtung"; often quite tricky!)
             my @desc = $stop->look_down( '_tag', 'td' );
-            #say Dumper($desc[0]);
-            #say Dumper($desc[1]);
-            #say Dumper($desc[2]);
-            $result->[$i]->[$k]->{'time'}    = $desc[0]->as_text;
-            $result->[$i]->[$k]->{'aban'}    = $desc[1]->as_text;  # TODO Key name?
-            $result->[$i]->[$k]->{'station'} = $desc[2]->as_text;
 
-            # Parsing the badly-formatted info-string $desc[4]
-            # TODO Linienänderungen!  ul class=changelist
+            # 2011-03-27, New!  Check whether any of these are empty and
+            # discard the whole entry if necessary (eg.
+            # "Aufwärtsführende Treppe" is listed as a separate stop but
+            # contains only 3 <td> elements).
+            next if (scalar(@desc) != 5);
+
+            $result->[$i]->[$k]->{'time'}    = remove_ws($desc[0]->as_text);
+            $result->[$i]->[$k]->{'aban'}    = remove_ws($desc[1]->as_text);
+            $result->[$i]->[$k]->{'station'} = remove_ws($desc[2]->as_text);
+
+            # 2011-03-27, Setting time for "on foot" entries.
+            # TODO Should this happen here?
+            $result->[$i]->[$k]->{'time'} =~ s/^\s*$/-    /;
+
+            # 2011-03-27, $desc[3] contains only images, as far as I've
+            # seen.  TODO True?
+            $_->delete foreach $desc[3]->look_down('_tag', 'img');
+            say STDERR "WARN desc[3] contains more!" unless $desc[3]->is_empty;
+
+            # Parsing the badly-formatted info-string $desc[4] for
+            # information like "Richtung".
             # TODO Überfahrhilfe!  </br>Überfahrhilfe
             # TODO Format of "Fußgänger"-entries is not quite cute.
+            # Get rid of information about "Linienänderungen" - it's
+            # already incorporated in the requested data!
+            $_->delete foreach $desc[4]->look_down('_tag', 'ul', 'class', 'changelist');
+            # 2011-03-27, TODO It doesn't make sense to look_down for
+            # <td> tags at this stage - we're already *in* a <td> tag,
+            # are we not?
             foreach my $info ($desc[4]->look_down('_tag','td')) {
                 if (my $bold = $info->look_down('_tag','b')) {
                     my $line = $bold->as_text;
