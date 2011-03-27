@@ -1,0 +1,23 @@
+2011-03-27, Shamelessly copied from another project of mine.
+
+Install
+---------
+
+### Local
+
+    perl Makefile.PL PREFIX=$HOME/local
+    (make test)
+    make install
+    (make clean)
+
+### System-wide
+
+As user:
+
+    perl Makefile.PL
+
+As root:
+
+    make install
+    make clean
+
