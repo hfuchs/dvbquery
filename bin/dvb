@@ -47,6 +47,7 @@ GetOptions(
     'complex:s' => \@complex,
     'help'      => \$help,
     'pdf'       => \$pdf,
+    'debug'     => \$config{debug},
 );
 
 display_help() if ($help);
@@ -69,6 +70,7 @@ if (@complex) {
 
 # --- Subroutines
 sub display_itinerary {
+    D();
     my (@plans) = @_;
 
     #chat("What a journey!  Let's see...");
@@ -91,6 +93,7 @@ sub display_itinerary {
 }
 
 sub parse_complex_plan {
+    D();
     # Parses strings like
     # 'hauptbahnhof@9:00,albertplatz;albertplatz@14:00,postplatz'
     # to produce an array like this (simple version):
@@ -140,6 +143,7 @@ sub parse_complex_plan {
 }
 
 sub display_connections {
+    D();
     # TODO Direct output to Markdown would be nice.
     my ($from, $to) = @_;
 
@@ -172,6 +176,7 @@ sub display_connections {
 }
 
 sub parse_connection_data {
+    D();
     # Note: You'll have to verify for yourself, whether all the fields are
     # actually defined.  TODO Or should I do this?
     my $tree = HTML::TreeBuilder->new_from_content(shift);
@@ -226,6 +231,7 @@ sub parse_connection_data {
 }
 
 sub fetch_connection_data {
+    D();
     # TODO $time still global
     my ($from, $to) = @_;
 
@@ -252,6 +258,7 @@ sub fetch_connection_data {
     );
 
     if ($mech->success) {
+        D("Mech seems succesful");
         return decode_utf8 $page->content;
     } else {
         # TODO You should probably die or carp or something.
@@ -260,6 +267,7 @@ sub fetch_connection_data {
 }
 
 sub display_departure {
+    D();
     my $station = shift;
 
     chat("So, you want to know everything about station '$station'?");
@@ -285,6 +293,7 @@ sub display_departure {
 }
 
 sub parse_departure_data {
+    D();
     my $string = shift;
     my $result;
 
@@ -302,6 +311,7 @@ sub parse_departure_data {
 }
 
 sub fetch_departure_data {
+    D();
     # TODO fetch_*() functions have identical try-catch blocks.
     my $station = shift;
 
@@ -322,6 +332,7 @@ sub fetch_departure_data {
 }
 
 sub parse_station_data {
+    D();
     my $string = shift;
     my $result;
 
@@ -340,6 +351,7 @@ sub parse_station_data {
 }
 
 sub fetch_station_data {
+    D();
     my $station = shift;
 
     my $url  = URI->new($server_url . "Haltestelle.do?ort=$ort&hst=$station");
@@ -354,6 +366,7 @@ sub fetch_station_data {
 }
 
 sub check_station_uniqueness {
+    D();
     # TODO Caching!  Learning!
     # TODO Inconsistent user interface, chat()s all over the place.
     my @stations = @_;
@@ -373,7 +386,10 @@ sub check_station_uniqueness {
 }
 
 sub sanitize_input {
+    D();
+    # TODO Why the distinction between array and scalar?
     # TODO Is that all as regards sanitization?
+    D(@_);
     if (scalar(@_) > 1) {
         return map { $_ = decode_utf8($_); } @_;
     } else {
@@ -381,10 +397,18 @@ sub sanitize_input {
     }
 }
 
+sub remove_ws {
+    D();
+    my $text = shift;
+    $text =~ s/^\s*(.*?)\s*$/$1/;
+    return $text;
+}
+
 # TODO Make this compatible with display_itinerary().  Perhaps
 # introducing push_pdf() and calling create_pdf_file() at the END would
 # be a clever solution.
 sub create_pdf_file {
+    D();
     my $rides = shift;
     my ($tmp, $tmp_name) = tempfile();
 
@@ -417,7 +441,10 @@ sub create_pdf_file {
 }
 
 sub display_help {
+    D();
     # TODO Use POD.
+    # TODO List of abbreviations.
+    # TODO debug flag.
     say 'dvb - DVB query 0.4 by HF <hagen.fuchs@physik.tu-dresden.de>';
     say "Usage:";
     say "  Display station info   -    dvb -f [station]";
@@ -433,8 +460,14 @@ sub display_help {
 }
 
 sub D {
-    say STDERR "Debug (@_)" if ($config{'debug'});
-    return;
+    return unless ($config{debug});
+
+    # 2011-03-27, Straight from the docs.
+    my ($package, $filename, $line, $subroutine, $hasargs,
+    $wantarray, $evaltext, $is_require, $hints, $bitmask, $hinthash)
+    = caller(1);
+
+    say STDERR encode_utf8 "DEBUG ($subroutine) ", scalar(@_)>0 ? @_ : "called.";
 }
 
 sub chat {
