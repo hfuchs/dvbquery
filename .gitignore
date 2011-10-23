@@ -1,7 +1,6 @@
 # Project specific
 
 
-
 # Images  & pdfs
 #*.jpg
 #*.bmp
@@ -26,6 +25,8 @@ tags
 # 2011-03-27, When using Perl's MakeMaker:
 Makefile
 Makefile.old
+blib/
+pm_to_blib
 
 # Don't try this at home!
 #.gitignore
