@@ -4,10 +4,18 @@ DVB query
 NEWS: See tag messages (git tag -n).
 TODO: See source code (grep TODO dvb).
 
-Publish
+Project Cycle
 ----------------------------------------------------------------------
 
-On releases do:
+Hosted on Github.  Checkout a local repository, branch and then publish
+branch and tags:
+
+    git clone git@github.com:hfuchs/dvbquery.git
+    git branch [featureX]
+    [work, commit]
+    git push origin [featureX] --tags
+
+On releases do (TODO Any reason not to use the Makefile?):
 
     su
     cp dvb /usr/local/bin/
