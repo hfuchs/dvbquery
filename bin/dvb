@@ -2,21 +2,18 @@
 # 2010-02-03, Created by H Fuchs <hagen.fuchs@physik.tu-dresden.de>
 # The GPL applies; if this script breaks something, don't come running to me!
 #
-# Witz: Wenn die Anfrage nicht länger als 10 Tage her ist, nimm die Daten
-# einfach aus dem Cache.  Noch cooler: Liefere immer aus dem Cache, aber
-# starte einen thread, der nochmal kontrolliert.
+# TODO Cache queries?  Always answer from cache, but start thread that
+# checks?  Generalize to support arbitrary street names.
 
-use strict;
-use utf8;
+use common::sense;
 use LWP::Simple;   # TODO Either LWP *or* Mech (more expensive)!
 use WWW::Mechanize 1.5;
 use HTML::TreeBuilder;
 use Encode;
 use Getopt::Long;    # Able to take the same option multiple times.
 use CGI qw/unescapeHTML/;
-use feature qw/say switch/;
 use URI;
-use Try::Tiny;
+use Try::Tiny;       # 2011-03-28, TODO Use more pervasively.
 use File::Temp qw/tempfile/;
 #use Config::Tiny;   # 2011-03-28, TODO Sucks.  Or?
 # TODO 'use'ing the 'open' pragma with ':locale' right after strict,
@@ -39,7 +36,7 @@ my $cfg_file   = "$ENV{HOME}/.dvbquery.conf";
 
 # Define default, hard-coded config and list of abbreviations here, read
 # the user's config file(s) and then merge.
-# 2011-03-28, TODO ALL BADLY FUCKED UP HERE.  UTF8shit hitting me hard.
+# 2011-03-28, TODO ALL BADLY FUCKED UP HERE.  UTF8 hitting me hard.
 # For now specifying abbreviations in expand_abbrev().
 #my %default_conf = (
 #    # TODO Define default output-format here: Markdown or "chat".
@@ -95,7 +92,7 @@ sub display_itinerary {
     # No chatting, this is serious business.
     # TODO pdf creation is useless - I'm creating multiple documents
     # instead of just one.
-    $config{'want_to_chat'} = 0;
+    $config{want_to_chat} = 0;
     $pdf = '';
 
     foreach my $plan (@plans) {
@@ -388,6 +385,9 @@ sub fetch_departure_data {
 }
 
 sub parse_station_data {
+    # Parses (JSON?) strings like this one (passed by
+    # fetch_station_data()):
+    #   [[["Bannewitz"]],[["Winckelmannstraße","Bannewitz","33001066"],["Windbergstraße","Bannewitz","33001076"]]]
     D();
     my $string = shift;
     my $result;
@@ -456,7 +456,7 @@ sub expand_abbrev {
     D();
     return '' unless (@_);
 
-    # 2011-03-28, TODO Complete shit.
+    # 2011-03-28, TODO Completely dumb.
     #my %abbrevs = %{$config{abbreviations}};
     my %abbrevs = (
         NÖ => 'Plauen Nöthnitzer Straße',
@@ -519,7 +519,7 @@ sub create_pdf_file {
         system("markdown2pdf $tmp_name") == 0
             or die;
     } catch {
-        chat("Actually, that didn't work out.  Never mind.");
+        chat("Actually, that didn't work out (markdown2pdf not installed?).  Never mind.");
     } finally {
         unlink $tmp_name;
     };
@@ -529,12 +529,13 @@ sub display_help {
     D();
     # TODO Use POD.
     # TODO List of abbreviations.
-    # TODO debug flag.
     say 'dvb - DVB query 0.4 by HF <hagen.fuchs@physik.tu-dresden.de>';
     say "Usage:";
     say "  Display station info   -    dvb -f [station]";
     say "  Route planning         -    dvb -f [from] -t [to] [-a [at]]";
     say "  Complex route planning -    dvb -c [route specification]";
+    say "Options:";
+    say "  -d    Run in debugging mode";
     say "\nComplex Route Specification:";
     say "  [from\@time,to;from\@time,to;...]";
     say "\nExamples:";
@@ -552,12 +553,15 @@ sub D {
     $wantarray, $evaltext, $is_require, $hints, $bitmask, $hinthash)
     = caller(1);
 
-    say STDERR encode_utf8 "DEBUG ($subroutine) ", scalar(@_)>0 ? @_ : "called.";
+    #say STDERR encode_utf8 "DEBUG ($subroutine) ", scalar(@_)>0 ? @_ : "called.";
+    say STDERR encode_utf8 "[$subroutine] " . join(" ", @_);
 }
 
 sub chat {
     # TODO More variety!  Say sth. different!
-    say @_ if ($config{'want_to_chat'});
+    # 2011-03-28, TODO Should be more like this, hm?
+    #say encode_utf8 @_ if ($config{want_to_chat});
+    say @_ if ($config{want_to_chat});
     return;
 }
 
