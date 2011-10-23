@@ -272,12 +272,13 @@ sub fetch_connection_data {
 
     my $from_ort     = $cfg_ort;
     my $from_station = $from;
-    ($from_ort, $from_station) = split(/:/, $from) if ($from =~ /:/);
+    ($from_ort, $from_station) = split(/\s*[,:]\s*/, $from) if ($from =~ /[,:]/);
     D("VON Ort: $from_ort; station: $from_station");
 
+    # TODO Duplication galore!
     my $to_ort     = $cfg_ort;
     my $to_station = $to;
-    ($to_ort, $to_station) = split(/:/, $to) if ($to =~ /:/);
+    ($to_ort, $to_station) = split(/\s*[,:]\s*/, $to) if ($to =~ /[,:]/);
     D("NACH Ort: $to_ort; station: $to_station");
 
     # See HTML::Element for operations on the tree, HTML::TreeBuilder for
