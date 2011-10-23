@@ -27,10 +27,11 @@ use File::Temp qw/tempfile/;
 use open ':locale';  # Governs STD*, open(), readpipe(), ...
 #use Data::Dumper;
 
+
 # --- Globals
 # TODO Read from config file
 my $server_url = "http://widgets.vvo-online.de/abfahrtsmonitor/";
-my $ort        = "Dresden";
+my $cfg_ort    = "Dresden";
 my $cfg_file   = "$ENV{HOME}/.dvbquery.conf";
 
 
@@ -272,11 +273,22 @@ sub fetch_connection_data {
     # TODO $time still global
     my ($from, $to) = @_;
 
+    my $from_ort     = $cfg_ort;
+    my $from_station = $from;
+    ($from_ort, $from_station) = split(/:/, $from) if ($from =~ /:/);
+    D("VON Ort: $from_ort; station: $from_station");
+
+    my $to_ort     = $cfg_ort;
+    my $to_station = $to;
+    ($to_ort, $to_station) = split(/:/, $to) if ($to =~ /:/);
+    D("NACH Ort: $to_ort; station: $to_station");
+
     # See HTML::Element for operations on the tree, HTML::TreeBuilder for
     # parsing information and WWW::Mechanize for general documentation.
     my $mech = new WWW::Mechanize;
 
     # TODO Zum Kotzen.
+    # 2011-03-27, Well then use Time::Piece!
     my ($sec,$min,$hour,$day,$month,$year,,,) = localtime(time);
     $year = $year+1900;
     $time = "$hour:$min" unless ($time);
@@ -285,12 +297,12 @@ sub fetch_connection_data {
     my $page = $mech->submit_form(
         'with_fields' => {
             'vaform[datum]'     =>  "$day." . ++$month . ".$year",
-            'vaform[startname]' =>  $from,
-            'vaform[startort]'  =>  'Dresden',
+            'vaform[startname]' =>  $from_station,
+            'vaform[startort]'  =>  $from_ort,
             'vaform[zeit]'      =>  $time,
             'vaform[zeittyp]'   =>  'dep',
-            'vaform[zielname]'  =>  $to,
-            'vaform[zielort]'   =>  'Dresden',
+            'vaform[zielname]'  =>  $to_station,
+            'vaform[zielort]'   =>  $to_ort,
         }
     );
 
@@ -350,11 +362,18 @@ sub parse_departure_data {
 sub fetch_departure_data {
     D();
     # TODO fetch_*() functions have identical try-catch blocks.
-    my $station = shift;
+    my $from    = shift;
+
+    my $ort     = $cfg_ort;
+    my $station = $from;
+    ($ort, $station) = split(/\s*[:,]\s*/, $station) if ($from =~ /[,:]/);
+    D("Ort: $ort; station: $station");
 
     # TODO Log URL.
     my $url = URI->new($server_url .
+        # TODO 20:00?!
         "Abfahrten.do?ort=$ort&hst=$station&vz=20:00");
+    D("URL: $url");
         # TODO Not sure about these.
         # +"&vm="+preferenceForKey('vmPrefChecked')
         # +"&lim="+preferenceForKey('listitemsPrefChecked'));
@@ -389,9 +408,15 @@ sub parse_station_data {
 
 sub fetch_station_data {
     D();
-    my $station = shift;
+    my $from    = shift;
+
+    my $ort     = $cfg_ort;
+    my $station = $from;
+    ($ort, $station) = split(/\s*[,:]\s*/, $station) if ($from =~ /[,:]/);
+    D("Ort: $ort; station: $station");
 
     my $url  = URI->new($server_url . "Haltestelle.do?ort=$ort&hst=$station");
+    D("URL: $url");
     try {
         my $page = get($url) or die "Network";
         $page = decode_utf8 CGI::unescapeHTML($page) or die "Fatal";
@@ -413,7 +438,12 @@ sub check_station_uniqueness {
 
         if (scalar(@{$result->[0]->{'stations'}}) > 1) {
             chat("But multiple stations match your request (silly bugger!):");
-            say  "  $_" foreach (@{$result->[0]->{'stations'}});
+            #say  "  $_" foreach (@{$result->[0]->{'stations'}});
+            # TODO I only ever use '->[0]' - get rid of the array in
+            # betwwen!
+            foreach ( @{$result->[0]->{stations}} ) {
+                say  "  $result->[0]->{ort}, $_";
+            }
             chat("Do try to be more specific next time, will you?");
             return '';
         }
