@@ -32,8 +32,13 @@ use open ':locale';  # Governs STD*, open(), readpipe(), ...
 
 # --- Globals
 # -----------------------------------------------------------------------
-# TODO Override in config file
+# The fine people of [redacted] managed to thoroughly kill the site
+# (but, hey!, look pretty full-screen pictures!).  Somehow, someone
+# somewhere in there retained a shred of decency and provided a backup.
+#my $fullsite_url = "http://dvb.de";
+my $fullsite_url = "http://dresden.vvo-online.de/de/verbindungsauskunft/";
 my $server_url = "http://widgets.vvo-online.de/abfahrtsmonitor/";
+# TODO Override in config file
 my $cfg_ort    = "Dresden";
 my $cfg_file   = "$ENV{HOME}/.dvbquery.conf";
 
@@ -232,8 +237,9 @@ sub parse_connection_data {
         my $k = 0;  # Index of stops in each ride.
         foreach my $stop (@stops) {
             # Remove elements that add no information.
-            $_->delete foreach $stop->look_down('_tag', 'ul', 'class', 'linkliste');
-            $_->delete foreach $stop->look_down('_tag', 'img', 'class', 'pictogram');
+            $_->delete foreach $stop->look_down('_tag', 'ul');
+            $_->delete foreach $stop->look_down('_tag', 'a');
+            $_->delete foreach $stop->look_down('_tag', 'img');
 
             # Find the individual description elements.  Entries:
             #  - time
@@ -316,7 +322,7 @@ sub fetch_connection_data {
     $year = $year+1900;
     $time = "$hour:$min" unless ($time);
 
-    $mech->get('http://dvb.de'); # TODO variable?
+    $mech->get($fullsite_url); # TODO variable?
     my $page = $mech->submit_form(
         'with_fields' => {
             'vaform[datum]'     =>  "$day." . ++$month . ".$year",
@@ -331,8 +337,7 @@ sub fetch_connection_data {
 
     if ($mech->success) {
         D("Mech seems succesful");
-        #return decode_utf8 $page->content;
-        return $page->content;
+        return decode_utf8 $page->content;
     } else {
         # TODO You should probably die or carp or something.
         say STDERR "Error: ", $mech->response->status_line;
@@ -403,8 +408,7 @@ sub fetch_departure_data {
         # +"&lim="+preferenceForKey('listitemsPrefChecked'));
     try {
         my $page = get($url) or die "Network";
-        #$page = decode_utf8 CGI::unescapeHTML($page) or die "Fatal";
-        $page = CGI::unescapeHTML($page) or die "Fatal";
+        $page = decode_utf8 CGI::unescapeHTML($page) or die "Fatal";
         return $page;
     } catch {
         when (/Network/) { die "Sorry, the DVB server is down.\n" }
@@ -447,8 +451,7 @@ sub fetch_station_data {
     D("URL: $url");
     try {
         my $page = get($url) or die "Network";
-        #$page = decode_utf8 CGI::unescapeHTML($page) or die "Fatal";
-        $page = CGI::unescapeHTML($page) or die "Fatal";
+        $page = decode_utf8 CGI::unescapeHTML($page) or die "Fatal";
         return $page;
     } catch {
         when (/Network/) { die "Sorry, the DVB server is down.\n" }
@@ -510,8 +513,7 @@ sub create_pdf_file {
     try {
         chat("I'll try to create a pdf, too.");
 
-        #say {$tmp} encode_utf8("dvb. '$from' - '$to'\n"."-"x70);
-        say {$tmp} "dvb. '$from' - '$to'\n"."-"x70;
+        say {$tmp} encode_utf8("dvb. '$from' - '$to'\n"."-"x70);
 
         # TODO Code duplication.
         foreach my $ride (@$rides) {
@@ -520,16 +522,17 @@ sub create_pdf_file {
                 $out .= " $stop->{'aban'} $stop->{'station'}";
                 $out .= " ($stop->{'line'})" if ($stop->{'line'});
                 $out .= "\n       $stop->{'note'}" if ($stop->{'note'});
-                say {$tmp} $out;
+                say {$tmp} encode_utf8 $out;
             }
             print {$tmp} "\n";
         }
         close $tmp or die;
 
-        system("markdown2pdf $tmp_name") == 0
-            or die;
+        system("pandoc $tmp_name -o $tmp_name.pdf") == 0 or die;
+        chat("$tmp_name.pdf");
     } catch {
         chat("Actually, that didn't work out (markdown2pdf not installed?).  Never mind.");
+        #warn "Caught error: $_";
     } finally {
         unlink $tmp_name;
     };
