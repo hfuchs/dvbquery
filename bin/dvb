@@ -1,61 +1,82 @@
 #!/usr/bin/perl -w
-# 2010-02-03, Created by H Fuchs <hagen.fuchs@physik.tu-dresden.de>
+# 2010-02-03, Created by H Fuchs <code@hfuchs.net>
+# 2015-08-13, Major UTF-8 cleanup effort (possibly succesful).
+#
 # The GPL applies; if this script breaks something, don't come running to me!
 #
 # TODO Cache queries?  Always answer from cache, but start thread that
 # checks?  Generalize to support arbitrary street names.
 
+# --- Modules
+# -----------------------------------------------------------------------
 use common::sense;
+
 use LWP::Simple;   # TODO Either LWP *or* Mech (more expensive)!
 use WWW::Mechanize 1.5;
 use HTML::TreeBuilder;
-use Encode;
 use Getopt::Long;    # Able to take the same option multiple times.
 use CGI qw/unescapeHTML/;
 use URI;
 use Try::Tiny;       # 2011-03-28, TODO Use more pervasively.
 use File::Temp qw/tempfile/;
 #use Config::Tiny;   # 2011-03-28, TODO Sucks.  Or?
-# TODO 'use'ing the 'open' pragma with ':locale' right after strict,
-# Perl makes 2000+ calls to decode_xs/encode_xs just in BEGIN{}!
-# Putting it at the end, solves that.  Using ':utf8' also works.
-# 2011-03-28, TODO The fuck?  Using ':locale' yields different results
-# with Config::Tiny than using ':utf8'.
+
+# When `use open ':locale'` at the beginning (right after strict), Perl
+# makes 2000+ calls to decode_xs/encode_xs just in BEGIN{}!  Putting it
+# at the end, solves that.  Using ':utf8' also works.
+# 2011-03-28, The fuck?  Using ':locale' yields different results with
+# Config::Tiny than using ':utf8'.
+# 2015-08-12, You'd think, my IO::All trick solves all.  It doesn't.
 use open ':locale';  # Governs STD*, open(), readpipe(), ...
-#use Data::Dumper;
 
 
 # --- Globals
-# TODO Read from config file
+# -----------------------------------------------------------------------
+# TODO Override in config file
 my $server_url = "http://widgets.vvo-online.de/abfahrtsmonitor/";
 my $cfg_ort    = "Dresden";
 my $cfg_file   = "$ENV{HOME}/.dvbquery.conf";
 
 
-# --- Main
-
+# --- Parse Config, Set Defaults
+# -----------------------------------------------------------------------
 # Define default, hard-coded config and list of abbreviations here, read
 # the user's config file(s) and then merge.
-# 2011-03-28, TODO ALL BADLY FUCKED UP HERE.  UTF8 hitting me hard.
+# 2011-03-28, ALL BADLY FUCKED UP HERE.  UTF8 hitting me hard.
 # For now specifying abbreviations in expand_abbrev().
+# 2015-08-13, Not anymore it ain't.  Fixed it all by the sweat of my
+# brows.
+#my %abbrevs = %{$config{abbreviations}};
+my %abbrevs = (
+    Ring => 'Plauenscher Ring',
+    NÖT => 'Plauen Nöthnitzer Straße',
+    HBF => 'Hauptbahnhof',
+    RAT => 'Rathaus Plauen',
+    Krippe => 'Achtbeeteweg',
+);
+
 #my %default_conf = (
 #    # TODO Define default output-format here: Markdown or "chat".
 #    want_to_chat => 1,
 #    debug        => 0,
 #);
-#my $default_abbreviations = (
-#    HBF => 'Hauptbahnhof',
-#    NÖ  => 'plauen nöthnitzer straße',
-#),
-#
 #my $user_conf = Config::Tiny->read($cfg_file);
 #$user_conf  ||= {};
 #my %config = (%default_conf, %$user_conf{conf});  # TODO Could write defaults here.
 my %config = ( debug => 0, want_to_chat => 1 );
 
-# Command-line parsing
+
+# --- Command-line parsing
+# -----------------------------------------------------------------------
 my ($from, $to, $time, @complex, $help);
 my $pdf = 1;
+
+# 2015-08-13, This.  /This/ is where I need to decode explicitly.  FFS!
+# The open pragma does zilch for reading from the command-line.
+use Encode::Locale;
+use Encode;
+@ARGV = map { decode(locale => $_, 1) } @ARGV;
+
 GetOptions(
     'from:s'    => \$from,  # TODO Allow eg. 'Dresden, Hauptbahnhof'.
     'to:s'      => \$to,
@@ -68,11 +89,13 @@ GetOptions(
 
 display_help() if ($help);
 
+# --- Main
+# -----------------------------------------------------------------------
 # TODO No args?  Ask.  Better still, start interactive prompt.
 if (@complex) {
-    display_itinerary(expand_abbrev(sanitize_input(@complex)));
-} elsif ($from = expand_abbrev(sanitize_input($from))) {
-    if ($to = expand_abbrev(sanitize_input($to))) {
+    display_itinerary(expand_abbrev(@complex));
+} elsif ($from = expand_abbrev($from)) {
+    if ($to = expand_abbrev($to)) {
         display_connections($from, $to); # TODO Pass time as well.
     } else {
         display_departure($from);
@@ -81,9 +104,11 @@ if (@complex) {
     chat("Would it bother you very much telling me what it is you want?");
     display_help();
 }
+# That's it, folks.  main() in 12 lines.
 
 
 # --- Subroutines
+# -----------------------------------------------------------------------
 sub display_itinerary {
     D();
     my (@plans) = @_;
@@ -306,7 +331,8 @@ sub fetch_connection_data {
 
     if ($mech->success) {
         D("Mech seems succesful");
-        return decode_utf8 $page->content;
+        #return decode_utf8 $page->content;
+        return $page->content;
     } else {
         # TODO You should probably die or carp or something.
         say STDERR "Error: ", $mech->response->status_line;
@@ -327,9 +353,9 @@ sub display_departure {
         if (scalar(@$result) > 0) {
             chat("Holmes!  Coaches leave in:");
             foreach my $entry (@$result) {
-                print "  ". $entry->{'minutes'} . "\tminutes to " .
+                say "  ". $entry->{'minutes'} . "\tminutes to " .
                 $entry->{'destination'} . " (" .
-                $entry->{'number'} . ")." . "\n";
+                $entry->{'number'} . ").";
             }
         } else {
             chat("My!  Nothing leaves from _there_.");
@@ -377,7 +403,8 @@ sub fetch_departure_data {
         # +"&lim="+preferenceForKey('listitemsPrefChecked'));
     try {
         my $page = get($url) or die "Network";
-        $page = decode_utf8 CGI::unescapeHTML($page) or die "Fatal";
+        #$page = decode_utf8 CGI::unescapeHTML($page) or die "Fatal";
+        $page = CGI::unescapeHTML($page) or die "Fatal";
         return $page;
     } catch {
         when (/Network/) { die "Sorry, the DVB server is down.\n" }
@@ -420,7 +447,8 @@ sub fetch_station_data {
     D("URL: $url");
     try {
         my $page = get($url) or die "Network";
-        $page = decode_utf8 CGI::unescapeHTML($page) or die "Fatal";
+        #$page = decode_utf8 CGI::unescapeHTML($page) or die "Fatal";
+        $page = CGI::unescapeHTML($page) or die "Fatal";
         return $page;
     } catch {
         when (/Network/) { die "Sorry, the DVB server is down.\n" }
@@ -457,30 +485,11 @@ sub expand_abbrev {
     D();
     return '' unless (@_);
 
-    # 2011-03-28, TODO Completely dumb.
-    #my %abbrevs = %{$config{abbreviations}};
-    my %abbrevs = (
-        NÖ => 'Plauen Nöthnitzer Straße',
-        HBF => 'Hauptbahnhof',
-        RAT => 'Rathaus Plauen',
-    );
     D("Abbreviations: ", join(", ", keys %abbrevs));
 
     @_ = map { exists $abbrevs{$_} ? $abbrevs{$_} : $_ } @_;
     # TODO This list-scalar distinction needs to go away!
     return scalar(@_) > 1 ? @_ : $_[0];
-}
-
-sub sanitize_input {
-    D();
-    # TODO Why the distinction between array and scalar?
-    # TODO Is that all as regards sanitization?
-    D(@_);
-    if (scalar(@_) > 1) {
-        return map { $_ = decode_utf8($_); } @_;
-    } else {
-        return decode_utf8(shift);
-    }
 }
 
 sub remove_ws {
@@ -501,7 +510,8 @@ sub create_pdf_file {
     try {
         chat("I'll try to create a pdf, too.");
 
-        say {$tmp} encode_utf8("dvb. '$from' - '$to'\n"."-"x70);
+        #say {$tmp} encode_utf8("dvb. '$from' - '$to'\n"."-"x70);
+        say {$tmp} "dvb. '$from' - '$to'\n"."-"x70;
 
         # TODO Code duplication.
         foreach my $ride (@$rides) {
@@ -510,8 +520,7 @@ sub create_pdf_file {
                 $out .= " $stop->{'aban'} $stop->{'station'}";
                 $out .= " ($stop->{'line'})" if ($stop->{'line'});
                 $out .= "\n       $stop->{'note'}" if ($stop->{'note'});
-                $out .= "\n";
-                print {$tmp} encode_utf8($out);
+                say {$tmp} $out;
             }
             print {$tmp} "\n";
         }
@@ -555,7 +564,8 @@ sub D {
     = caller(1);
 
     #say STDERR encode_utf8 "DEBUG ($subroutine) ", scalar(@_)>0 ? @_ : "called.";
-    say STDERR encode_utf8 "[$subroutine] " . join(" ", @_);
+    #say STDERR encode_utf8 "[$subroutine] " . join(" ", @_);
+    say STDERR "[$subroutine] " . join(" ", @_);
 }
 
 sub chat {
