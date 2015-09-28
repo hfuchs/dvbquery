@@ -14,7 +14,7 @@ use HTML::TreeBuilder;
 use Encode;
 use Getopt::Long;    # Able to take the same option multiple times.
 use CGI qw/unescapeHTML/;
-use feature qw/say switch/;
+use feature qw/say/;
 use URI;
 use Try::Tiny;
 use File::Temp qw/tempfile/;
@@ -363,7 +363,7 @@ sub fetch_departure_data {
         $page = decode_utf8 CGI::unescapeHTML($page) or die "Fatal";
         return $page;
     } catch {
-        when (/Network/) { die "Sorry, the DVB server is down.\n" }
+        if (/Network/) { die "Sorry, the DVB server is down.\n" }
         default          { die "Fatal" }
     };
 }
@@ -397,7 +397,7 @@ sub fetch_station_data {
         $page = decode_utf8 CGI::unescapeHTML($page) or die "Fatal";
         return $page;
     } catch {
-        when (/Network/) { die "Sorry, the DVB server is down.\n" }
+        if (/Network/) { die "Sorry, the DVB server is down.\n" }
         default          { die "Fatal" }
     };
 }
@@ -426,8 +426,6 @@ sub expand_abbrev {
     D();
     return '' unless (@_);
 
-    # 2011-03-28, TODO Complete shit.
-    #my %abbrevs = %{$config{abbreviations}};
     my %abbrevs = (
         NÖ => 'Plauen Nöthnitzer Straße',
         HBF => 'Hauptbahnhof',
@@ -435,7 +433,7 @@ sub expand_abbrev {
     );
     D("Abbreviations: ", join(", ", keys %abbrevs));
 
-    @_ = map { exists $abbrevs{$_} ? $abbrevs{$_} : $_ } @_;
+    @_ = map { defined $_ or $_=''; exists $abbrevs{$_} ? $abbrevs{$_} : $_ } @_;
     # TODO This list-scalar distinction needs to go away!
     return scalar(@_) > 1 ? @_ : $_[0];
 }
